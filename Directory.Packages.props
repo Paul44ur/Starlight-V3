@@ -24,6 +24,7 @@
     <PackageVersion Include="NAudio" Version="3.3.0" />
     <PackageVersion Include="Microsoft.ML.OnnxRuntime" Version="1.32.0" />
     <PackageVersion Include="H.NotifyIcon.Wpf" Version="2.4.1" />
+    <PackageVersion Include="WPF-UI" Version="4.3.0" />
     <PackageVersion Include="Markdig" Version="1.6.0" />
   </ItemGroup>
 </Project>

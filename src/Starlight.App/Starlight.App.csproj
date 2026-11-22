@@ -1,11 +1,27 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
-
+<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
-    <TargetFramework>net10.0-windows</TargetFramework>
-    <Nullable>enable</Nullable>
-    <ImplicitUsings>enable</ImplicitUsings>
+    <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
+    <SupportedOSPlatformVersion>10.0.19041.0</SupportedOSPlatformVersion>
     <UseWPF>true</UseWPF>
+    <AssemblyName>Starlight</AssemblyName>
+    <RootNamespace>Starlight.App</RootNamespace>
+    <ApplicationIcon>Assets\starlight.ico</ApplicationIcon>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <StartupObject>Starlight.App.Program</StartupObject>
   </PropertyGroup>
-
+  <ItemGroup>
+    <PackageReference Include="WPF-UI" />
+    <PackageReference Include="H.NotifyIcon.Wpf" />
+    <PackageReference Include="Velopack" />
+  </ItemGroup>
+  <ItemGroup>
+    <Resource Include="Assets\starlight.ico" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Starlight.Core\Starlight.Core.csproj" />
+    <ProjectReference Include="..\Starlight.Model\Starlight.Model.csproj" />
+    <ProjectReference Include="..\Starlight.Tools.Pc\Starlight.Tools.Pc.csproj" />
+    <ProjectReference Include="..\Starlight.Tools.Desktop\Starlight.Tools.Desktop.csproj" />
+  </ItemGroup>
 </Project>
