@@ -2,10 +2,19 @@ using Starlight.Settings;
 
 namespace Starlight.Voice;
 
-/// <summary>Where the voice models live. Small ones ship in the app's runtime folder; whisper sits with the chat model.</summary>
+/// <summary>Where the voice models live: the first start downloads them to models\voice (kept across updates);
+/// a runtime\voice folder next to the app is used if there is one.</summary>
 public sealed class VoiceAssets(StarlightPaths paths, SettingsStore settings)
 {
-    public string VoiceDir => Path.Combine(paths.RuntimeDir, "voice");
+    public string VoiceDir
+    {
+        get
+        {
+            var withModels = Path.Combine(settings.Current.Model.ModelsDir, "voice");
+            return settings.Current.Model.ModelsDir.Length > 0 && Directory.Exists(withModels) ? withModels : Path.Combine(paths.RuntimeDir, "voice");
+        }
+    }
+
     public string VadModel => Path.Combine(VoiceDir, "silero_vad.onnx");
     public string KokoroDir => Path.Combine(VoiceDir, "kokoro");
     public string KwsDir => Path.Combine(VoiceDir, "kws");

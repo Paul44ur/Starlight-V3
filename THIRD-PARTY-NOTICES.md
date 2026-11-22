@@ -8,12 +8,12 @@ Starlight uses these packages through NuGet, under their own licences:
 - Serilog, Serilog.Sinks.File, Serilog.Formatting.Compact (Apache-2.0)
 - WPF-UI (MIT), H.NotifyIcon.Wpf (MIT), Markdig (BSD-2-Clause), Velopack (MIT)
 - NAudio (MIT), Whisper.net (MIT), sherpa-onnx (Apache-2.0), SSH.NET (MIT)
-- FlaUI (MIT), AngleSharp (MIT)
+- FlaUI (MIT), AngleSharp (MIT), SharpCompress (MIT)
 - xUnit (Apache-2.0), tests only
 
 Files that ship next to the app or are downloaded on first start:
 
-- llama.cpp `llama-server` (MIT)
+- llama.cpp `llama-server` (MIT), the Python embeddable package (PSF License)
 - whisper.cpp models (MIT), Silero VAD (MIT), Kokoro-82M (Apache-2.0), espeak-ng data (GPL-3.0,
   used as data by sherpa-onnx; not linked into Starlight)
 

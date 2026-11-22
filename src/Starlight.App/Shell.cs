@@ -108,9 +108,16 @@ internal sealed class Shell : IDisposable
         StartWithWindows.Apply(_core.Settings.Current.General.StartWithWindows);
         _ = Task.Run(StartVoice);
         _watcher.Start();
+        if (SetupWindow.Needed(_core))
+        {
+            ShowSetup();
+        }
         if (string.IsNullOrWhiteSpace(_core.Settings.Current.Model.ChatModelFile))
         {
-            ShowSettings();
+            if (!SetupWindow.Needed(_core))
+            {
+                ShowSettings();
+            }
             _tray.ShowNotification("Starlight", "Choose a model in Settings to get started.");
             return;
         }
@@ -135,6 +142,7 @@ internal sealed class Shell : IDisposable
         }
         Add("Open Starlight", ShowChat);
         Add("Settings", ShowSettings);
+        Add("Set up voice and models…", ShowSetup);
         Add("Report a problem…", ReportProblem);
         Add("Export diagnostics", ExportDiagnostics);
         menu.Items.Add(new Separator());
@@ -267,6 +275,26 @@ internal sealed class Shell : IDisposable
             }
         }, TaskScheduler.Default);
         UpdateKillItem();
+    }
+
+    private SetupWindow? _setup;
+
+    public void ShowSetup()
+    {
+        if (_setup is null)
+        {
+            _setup = new SetupWindow(_core);
+            _setup.Closed += (_, _) =>
+            {
+                _setup = null;
+                if (string.IsNullOrWhiteSpace(_core.Settings.Current.Model.ChatModelFile))
+                {
+                    ShowSettings();
+                }
+            };
+        }
+        _setup.Show();
+        _setup.Activate();
     }
 
     public void ShowChat()
