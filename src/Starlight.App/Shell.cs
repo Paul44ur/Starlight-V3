@@ -34,6 +34,7 @@ internal sealed class Shell : IDisposable
     private WakeWord? _wake;
     private int _pttHeld;
     private SettingsWindow? _settings;
+    private ChatWindow? _chat;
 
     public Shell(App app)
     {
@@ -59,7 +60,7 @@ internal sealed class Shell : IDisposable
             Icon = new System.Drawing.Icon(Application.GetResourceStream(new Uri("pack://application:,,,/Assets/starlight.ico"))!.Stream),
             ContextMenu = BuildMenu(),
         };
-        _tray.TrayMouseDoubleClick += (_, _) => ShowSettings();
+        _tray.TrayMouseDoubleClick += (_, _) => ShowChat();
         UpdateKillItem();
 
         _core.Events.Subscribe<KillSwitchChanged>(_ => OnUi(UpdateKillItem));
@@ -68,7 +69,7 @@ internal sealed class Shell : IDisposable
         _core.Settings.Changed += s => OnUi(() => RegisterHotkeys());
 
         _showEvent = new EventWaitHandle(false, EventResetMode.AutoReset, Program.ShowEventName);
-        _showWait = ThreadPool.RegisterWaitForSingleObject(_showEvent, (_, _) => OnUi(ShowSettings), null, Timeout.Infinite, false);
+        _showWait = ThreadPool.RegisterWaitForSingleObject(_showEvent, (_, _) => OnUi(ShowChat), null, Timeout.Infinite, false);
     }
 
     public async Task StartAsync()
@@ -103,6 +104,7 @@ internal sealed class Shell : IDisposable
             item.Click += (_, _) => onClick();
             menu.Items.Add(item);
         }
+        Add("Open Starlight", ShowChat);
         Add("Settings", ShowSettings);
         Add("Report a problem…", ReportProblem);
         Add("Export diagnostics", ExportDiagnostics);
@@ -123,6 +125,7 @@ internal sealed class Shell : IDisposable
             item.Click += (_, _) => onClick();
             menu.Items.Add(item);
         }
+        Add("Open chat", ShowChat);
         _orbKillItem.Click += (_, _) => ToggleKill("orb menu");
         menu.Items.Add(_orbKillItem);
         menu.Items.Add(new Separator());
@@ -177,6 +180,7 @@ internal sealed class Shell : IDisposable
             {
                 ApprovalPending = () => _overlay.IsAsking,
                 AnswerApproval = _overlay.AnswerByVoice,
+                ConversationFor = _core.Conversations.ForVoice,
             };
             if (settings.WakeWordEnabled)
             {
@@ -232,6 +236,21 @@ internal sealed class Shell : IDisposable
             }
         }, TaskScheduler.Default);
         UpdateKillItem();
+    }
+
+    public void ShowChat()
+    {
+        if (_chat is null)
+        {
+            _chat = new ChatWindow(_core, ShowSettings);
+            _chat.Closed += (_, _) => _chat = null;
+        }
+        _chat.Show();
+        if (_chat.WindowState == WindowState.Minimized)
+        {
+            _chat.WindowState = WindowState.Normal;
+        }
+        _chat.Activate();
     }
 
     public void ShowSettings()

@@ -28,6 +28,7 @@ public sealed class AssistantCore : IDisposable
         Approvals = approvals;
         Dispatcher = new ToolDispatcher(Tools, KillSwitch, approvals, Settings, Db, Trace, Events);
         Reports = new ProblemReports(paths, Trace);
+        Conversations = new Conversations(Db);
     }
 
     public StarlightPaths Paths { get; }
@@ -40,6 +41,7 @@ public sealed class AssistantCore : IDisposable
     public IApprovalService Approvals { get; }
     public ToolDispatcher Dispatcher { get; }
     public ProblemReports Reports { get; }
+    public Conversations Conversations { get; }
     public AgentLoop? Agent { get; private set; }
 
     /// <summary>Sets up logging and crash capture, then the services. Call once per process.</summary>

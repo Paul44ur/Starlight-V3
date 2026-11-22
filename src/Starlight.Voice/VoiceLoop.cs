@@ -25,8 +25,6 @@ public sealed class VoiceLoop : IDisposable
     private readonly SettingsStore _settings;
     private readonly IDisposable _deltaSub;
     private readonly IDisposable _killSub;
-    private Conversation _conversation = new();
-    private DateTime _lastTurn = DateTime.MinValue;
     private SentenceSplitter? _splitter;
     private string? _turnId;
     private Task? _running;
@@ -69,19 +67,10 @@ public sealed class VoiceLoop : IDisposable
     /// <summary>True while a Yes/No card is open (the turn waits for it, so listening must not cancel it).</summary>
     public Func<bool>? ApprovalPending { get; set; }
 
-    /// <summary>The conversation voice turns go into. A new one starts after 10 quiet minutes.</summary>
-    public Conversation Conversation
-    {
-        get
-        {
-            if (DateTime.UtcNow - _lastTurn > TimeSpan.FromMinutes(10))
-            {
-                _conversation = new Conversation();
-            }
-            return _conversation;
-        }
-        set => _conversation = value;
-    }
+    /// <summary>Gives the conversation a spoken request goes into (shared with the chat window).</summary>
+    public Func<Conversation>? ConversationFor { get; set; }
+
+    private Conversation _fallback = new();
 
     private void ApplySettings()
     {
@@ -195,10 +184,9 @@ public sealed class VoiceLoop : IDisposable
                 return;
             }
             _splitter = new SentenceSplitter();
-            var conversation = Conversation;
+            var conversation = ConversationFor?.Invoke() ?? _fallback;
             var heardAt = sw.Elapsed;
             var outcome = await _agent.RunAsync(conversation, text, "voice");
-            _lastTurn = DateTime.UtcNow;
             if (_splitter?.Flush() is { } rest)
             {
                 Say(rest);

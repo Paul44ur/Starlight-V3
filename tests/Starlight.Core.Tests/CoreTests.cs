@@ -144,3 +144,42 @@ public sealed class DatabaseTests
         Assert.Empty(env.Db.ListConversations());
     }
 }
+
+public sealed class ConversationsTests
+{
+    private sealed class Clock : TimeProvider
+    {
+        public DateTimeOffset Now { get; set; } = DateTimeOffset.UtcNow;
+        public override DateTimeOffset GetUtcNow() => Now;
+    }
+
+    [Fact]
+    public void Voice_continues_the_current_conversation_for_ten_minutes()
+    {
+        using var env = new TestEnv();
+        var clock = new Clock();
+        var all = new Starlight.Agent.Conversations(env.Db, clock);
+        var first = all.ForVoice();
+        clock.Now += TimeSpan.FromMinutes(5);
+        Assert.Same(first, all.ForVoice());
+        clock.Now += TimeSpan.FromMinutes(11);
+        Assert.NotSame(first, all.ForVoice());
+    }
+
+    [Fact]
+    public void A_saved_conversation_loads_once_and_is_shared()
+    {
+        using var env = new TestEnv();
+        env.Db.SaveConversation("x", "Notepad", [new ChatMessage(ChatRole.User, "open notepad")], DateTimeOffset.Now);
+        var all = new Starlight.Agent.Conversations(env.Db);
+        var a = all.Get("x");
+        Assert.Same(a, all.Get("x"));
+        Assert.Equal("Notepad", a.Title);
+        Assert.Single(a.Messages);
+        Starlight.Agent.Conversation? seen = null;
+        all.CurrentChanged += c => seen = c;
+        all.Use(a);
+        Assert.Same(a, seen);
+        Assert.Same(a, all.ForVoice());
+    }
+}
