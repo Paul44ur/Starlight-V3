@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
+    <SupportedOSPlatformVersion>10.0.19041.0</SupportedOSPlatformVersion>
+    <RootNamespace>Starlight.Eval</RootNamespace>
+    <AssemblyName>starlight-eval</AssemblyName>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Starlight.Core\Starlight.Core.csproj" />
+    <ProjectReference Include="..\Starlight.Model\Starlight.Model.csproj" />
+    <ProjectReference Include="..\Starlight.Tools.Pc\Starlight.Tools.Pc.csproj" />
+    <ProjectReference Include="..\Starlight.Tools.Desktop\Starlight.Tools.Desktop.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="cases\*.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>

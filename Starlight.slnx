@@ -5,6 +5,7 @@
     <Project Path="src/Starlight.Tools.Pc/Starlight.Tools.Pc.csproj" />
     <Project Path="src/Starlight.Tools.Desktop/Starlight.Tools.Desktop.csproj" />
     <Project Path="src/Starlight.DevConsole/Starlight.DevConsole.csproj" />
+    <Project Path="src/Starlight.Eval/Starlight.Eval.csproj" />
     <Project Path="src/Starlight.App/Starlight.App.csproj" />
   </Folder>
   <Folder Name="/tests/">

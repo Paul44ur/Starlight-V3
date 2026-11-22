@@ -18,6 +18,8 @@
   <ItemGroup>
     <Compile Include="..\..\src\Starlight.Tools.Desktop\AppMatcher.cs" Link="Linked\AppMatcher.cs" />
     <Compile Include="..\..\src\Starlight.Tools.Desktop\HotkeyParser.cs" Link="Linked\HotkeyParser.cs" />
+    <Compile Include="..\..\src\Starlight.Eval\EvalCase.cs" Link="Linked\EvalCase.cs" />
+    <None Include="..\..\src\Starlight.Eval\cases\*.json" Link="cases\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
     <None Include="Fakes\**" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>
