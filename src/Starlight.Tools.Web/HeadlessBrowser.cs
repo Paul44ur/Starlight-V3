@@ -41,6 +41,9 @@ public sealed class EdgeBrowser(string profileDir, string? exe = null) : IBrowse
     private JobObject? _job;
     private Cdp? _cdp;
 
+    /// <summary>More browser flags; tests on Linux need --no-sandbox when running as root.</summary>
+    internal string[] ExtraArgs { get; init; } = [];
+
     public static string? FindExe()
     {
         string[] roots = [Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86), Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),
@@ -91,6 +94,10 @@ public sealed class EdgeBrowser(string profileDir, string? exe = null) : IBrowse
             })
             {
                 psi.ArgumentList.Add(a);
+            }
+            foreach (var a in ExtraArgs)
+            {
+                psi.ArgumentList.Insert(0, a);
             }
             _process = Process.Start(psi) ?? throw new ToolException("The browser did not start.");
             if (OperatingSystem.IsWindows())
