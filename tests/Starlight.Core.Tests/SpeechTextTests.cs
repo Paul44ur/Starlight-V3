@@ -90,3 +90,31 @@ public sealed class VoiceApprovalTests
     public void Parses_spoken_answers(string heard, Starlight.Tools.ApprovalAnswer? expected) =>
         Assert.Equal(expected, VoiceApproval.Parse(heard));
 }
+
+public sealed class WakeTokensTests
+{
+    private static readonly HashSet<string> Vocab = WakeTokens.ReadVocab(
+        ["<blk> 0", "▁HE 1", "Y 2", "▁STAR 3", "L 4", "IGHT 5", "▁ 6", "N 7", "O 8", "VA 9", "▁HEY 10", "S 11", "T 12", "A 13", "R 14"]);
+
+    [Fact]
+    public void Phrase_becomes_longest_pieces_with_label()
+    {
+        Assert.Equal("▁HEY ▁STAR L IGHT :1.5 #0.25 @HEY_STARLIGHT", WakeTokens.Line("Hey, Starlight!", Vocab));
+    }
+
+    [Fact]
+    public void Words_without_a_start_piece_use_the_lone_mark()
+    {
+        Assert.Equal("▁ N O VA :1.5 #0.25 @NOVA", WakeTokens.Line("nova", Vocab));
+        Assert.Null(WakeTokens.Line("Hey Zed", Vocab));
+        Assert.Null(WakeTokens.Line("!!", Vocab));
+    }
+
+    [Fact]
+    public void Sensitivity_lowers_the_threshold()
+    {
+        Assert.Equal(0.45, WakeTokens.Threshold(0));
+        Assert.Equal(0.1, WakeTokens.Threshold(1));
+        Assert.True(WakeTokens.Threshold(0.5) is > 0.1 and < 0.45);
+    }
+}

@@ -139,6 +139,13 @@ internal sealed class SettingsWindow : FluentWindow
         var enabled = new ToggleSwitch { IsChecked = v.Enabled, Content = "Use voice (takes effect after a restart of Starlight)" };
         enabled.Click += (_, _) => v.Enabled = enabled.IsChecked == true;
         Row(p, "Voice", enabled);
+        var wake = new ToggleSwitch { IsChecked = v.WakeWordEnabled, Content = "Listen for the wake phrase" };
+        wake.Click += (_, _) => v.WakeWordEnabled = wake.IsChecked == true;
+        Row(p, "Wake phrase", wake);
+        Row(p, "Phrase", Text(v.WakePhrase, t => v.WakePhrase = t.Trim()), "Any plain English words, for example \"Hey Starlight\" or \"Hey Nova\". Takes effect after a restart of Starlight.");
+        var sensitivity = new Slider { Minimum = 0, Maximum = 1, Value = v.WakeSensitivity, Width = 240, HorizontalAlignment = HorizontalAlignment.Left, TickFrequency = 0.1, IsSnapToTickEnabled = true };
+        sensitivity.ValueChanged += (_, _) => v.WakeSensitivity = Math.Round(sensitivity.Value, 1);
+        Row(p, "Wake sensitivity", sensitivity, "Left: wakes less often by mistake. Right: hears you more easily.");
         Row(p, "Push-to-talk keys", Text(v.PushToTalkHotkey, t => v.PushToTalkHotkey = t.Trim()), "Hold to talk. For example Ctrl+Alt+Space.");
         var speak = new ToggleSwitch { IsChecked = v.SpeakAnswers, Content = "Speak answers out loud" };
         speak.Click += (_, _) => v.SpeakAnswers = speak.IsChecked == true;

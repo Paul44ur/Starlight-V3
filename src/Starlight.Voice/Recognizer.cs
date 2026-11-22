@@ -36,6 +36,9 @@ public sealed class Recognizer : IDisposable
         Log.Information("Speech recognition loaded in {Ms} ms", sw.ElapsedMilliseconds);
     }
 
+    /// <summary>A detector for hands-free listening: tells when the user has finished speaking.</summary>
+    public Endpointer CreateEndpointer() => new(_vadConfig);
+
     /// <summary>The speech parts of the audio, joined. Empty if nobody spoke.</summary>
     public float[] SpeechOnly(float[] audio)
     {
@@ -90,4 +93,36 @@ public sealed class Recognizer : IDisposable
         _whisper.Dispose();
         _one.Dispose();
     }
+}
+
+/// <summary>Feeds live audio to Silero VAD; <see cref="Feed"/> returns true once speech started and then 600 ms of quiet followed.</summary>
+public sealed class Endpointer : IDisposable
+{
+    private const int Window = 512;
+    private readonly VoiceActivityDetector _vad;
+    private readonly List<float> _pending = [];
+
+    internal Endpointer(VadModelConfig config) => _vad = new VoiceActivityDetector(config, 30);
+
+    public bool SpeechStarted { get; private set; }
+
+    public bool Feed(float[] chunk)
+    {
+        _pending.AddRange(chunk);
+        var ended = false;
+        while (_pending.Count >= Window)
+        {
+            _vad.AcceptWaveform(_pending.GetRange(0, Window).ToArray());
+            _pending.RemoveRange(0, Window);
+            SpeechStarted |= _vad.IsSpeechDetected();
+            if (!_vad.IsEmpty())
+            {
+                ended = true; // a complete segment: speech, then the minimum silence
+                _vad.Clear();
+            }
+        }
+        return ended;
+    }
+
+    public void Dispose() => _vad.Dispose();
 }

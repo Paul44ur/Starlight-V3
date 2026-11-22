@@ -31,6 +31,7 @@ internal sealed class Shell : IDisposable
     private Recognizer? _recognizer;
     private Speaker? _speaker;
     private VoiceLoop? _voice;
+    private WakeWord? _wake;
     private int _pttHeld;
     private SettingsWindow? _settings;
 
@@ -177,6 +178,19 @@ internal sealed class Shell : IDisposable
                 ApprovalPending = () => _overlay.IsAsking,
                 AnswerApproval = _overlay.AnswerByVoice,
             };
+            if (settings.WakeWordEnabled)
+            {
+                try
+                {
+                    _wake = new WakeWord(assets.KwsDir, settings.WakePhrase, settings.WakeSensitivity);
+                    _voice.EnableWakeWord(_wake);
+                }
+                catch (Exception ex) when (ex is FileNotFoundException or DirectoryNotFoundException or ArgumentException)
+                {
+                    Log.Warning(ex, "Wake phrase is off");
+                    _core.Events.Publish(new Notice("The wake phrase is off: " + ex.Message, NoticeLevel.Warning));
+                }
+            }
             Log.Information("Voice ready; push-to-talk is {Key}", settings.PushToTalkHotkey);
         }
         catch (Exception ex)
@@ -271,6 +285,7 @@ internal sealed class Shell : IDisposable
         _voice?.Dispose();
         _overlay.Dispose();
         _speaker?.Dispose();
+        _wake?.Dispose();
         _recognizer?.Dispose();
         _mic?.Dispose();
         _model.DisposeAsync().AsTask().Wait(TimeSpan.FromSeconds(5));

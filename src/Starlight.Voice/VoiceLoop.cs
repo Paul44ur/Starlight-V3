@@ -30,6 +30,9 @@ public sealed class VoiceLoop : IDisposable
     private SentenceSplitter? _splitter;
     private string? _turnId;
     private Task? _running;
+    private WakeWord? _wake;
+    private Endpointer? _endpointer;
+    private DateTime _handsFreeSince;
 
     public VoiceLoop(Microphone mic, Recognizer recognizer, Speaker speaker, AgentLoop agent, EventHub events, SettingsStore settings)
     {
@@ -53,6 +56,7 @@ public sealed class VoiceLoop : IDisposable
             if (!_agent.Busy && !_mic.IsRecording)
             {
                 _events.Publish(new StateChanged(AssistantState.Idle));
+                ResumeWake();
             }
         };
         ApplySettings();
@@ -85,9 +89,64 @@ public sealed class VoiceLoop : IDisposable
         _speaker.Rate = (float)_settings.Current.Voice.SpeechRate;
     }
 
+    /// <summary>Starts listening for the wake phrase all the time (plan P6).</summary>
+    public void EnableWakeWord(WakeWord wake)
+    {
+        _wake = wake;
+        wake.Heard += () => Task.Run(WakeUp);
+        _mic.Samples += OnSamples;
+        _mic.Open();
+    }
+
+    private void OnSamples(float[] chunk)
+    {
+        if (_endpointer is { } ep)
+        {
+            var ended = ep.Feed(chunk);
+            var waited = DateTime.UtcNow - _handsFreeSince;
+            if (ended || waited > TimeSpan.FromSeconds(20) || (!ep.SpeechStarted && waited > TimeSpan.FromSeconds(5)))
+            {
+                _endpointer = null;
+                ep.Dispose();
+                StopListening();
+            }
+            return;
+        }
+        _wake?.Feed(chunk);
+    }
+
+    /// <summary>The wake phrase was heard: listen until the user stops talking.</summary>
+    private void WakeUp()
+    {
+        if (_endpointer is not null || _mic.IsRecording)
+        {
+            return;
+        }
+        if (_wake is not null)
+        {
+            _wake.Active = false;
+        }
+        StartListening();
+        _handsFreeSince = DateTime.UtcNow;
+        _endpointer = _recognizer.CreateEndpointer();
+    }
+
+    private void ResumeWake()
+    {
+        if (_wake is not null && !_wake.Active)
+        {
+            _wake.Reset();
+            _wake.Active = true;
+        }
+    }
+
     /// <summary>The push-to-talk key went down.</summary>
     public void StartListening()
     {
+        if (_wake is not null)
+        {
+            _wake.Active = false;
+        }
         if (_speaker.IsSpeaking)
         {
             _speaker.Stop(); // barge-in
@@ -117,12 +176,14 @@ public sealed class VoiceLoop : IDisposable
             if (text.Length == 0)
             {
                 _events.Publish(new StateChanged(AssistantState.Idle, "Nothing heard"));
+                ResumeWake();
                 return;
             }
             _events.Publish(new UserSaid(text, "voice"));
             if (ApprovalPending?.Invoke() == true && VoiceApproval.Parse(text) is { } answer)
             {
                 AnswerApproval?.Invoke(answer);
+                ResumeWake();
                 return;
             }
             if (StopWords.Contains(text.Trim().TrimEnd('.', '!').Trim()))
@@ -130,6 +191,7 @@ public sealed class VoiceLoop : IDisposable
                 _speaker.Stop();
                 _agent.CancelCurrent();
                 _events.Publish(new StateChanged(AssistantState.Idle));
+                ResumeWake();
                 return;
             }
             _splitter = new SentenceSplitter();
@@ -152,11 +214,16 @@ public sealed class VoiceLoop : IDisposable
             {
                 _events.Publish(new StateChanged(AssistantState.Speaking));
             }
+            else
+            {
+                ResumeWake();
+            }
         }
         catch (Exception ex)
         {
             Log.Error(ex, "Voice turn failed");
             _events.Publish(new StateChanged(AssistantState.Idle));
+            ResumeWake();
         }
     }
 
@@ -190,6 +257,8 @@ public sealed class VoiceLoop : IDisposable
 
     public void Dispose()
     {
+        _mic.Samples -= OnSamples;
+        _endpointer?.Dispose();
         _deltaSub.Dispose();
         _killSub.Dispose();
         _running?.Wait(TimeSpan.FromSeconds(2));
