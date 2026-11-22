@@ -16,6 +16,7 @@ using Starlight.Tools.Pc;
 
 // Developer console (plan P0/P1): talk to the model and the tools without the app.
 // starlight-dev [--data DIR] [--server llama-server.exe] [--model file.gguf] [--dev-tools]
+// starlight-dev --selfcheck: checks every Windows-only part once, no model needed.
 var argv = args.ToList();
 string? Opt(string name)
 {
@@ -27,6 +28,10 @@ var dataDir = Opt("--data") ?? Environment.GetEnvironmentVariable("STARLIGHT_DAT
     ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Starlight");
 var paths = new StarlightPaths(dataDir, AppContext.BaseDirectory);
 using var core = AssistantCore.Start(paths, new ConsoleApprovals());
+if (argv.Contains("--selfcheck"))
+{
+    return await Starlight.DevConsole.SelfCheck.RunAsync(core, paths);
+}
 if (Opt("--model") is { } model)
 {
     core.Settings.Update(s =>
@@ -134,6 +139,8 @@ while (true)
     }
     Gray($"[{sw.Elapsed.TotalSeconds:0.0} s{(core.KillSwitch.IsEngaged ? $", stopped {killedAt.ElapsedMilliseconds} ms after the kill switch" : "")}]");
 }
+
+return 0;
 
 static void Gray(string text)
 {
