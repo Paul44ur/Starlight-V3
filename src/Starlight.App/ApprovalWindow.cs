@@ -48,3 +48,11 @@ internal sealed class WindowApprovals : IApprovalService
         return done.Task;
     }
 }
+
+/// <summary>Forwards to the overlay's ask card, or to the window when the overlay is off.</summary>
+internal sealed class SwitchableApprovals : IApprovalService
+{
+    public IApprovalService Target { get; set; } = new DenyAllApprovals();
+
+    public Task<ApprovalAnswer> RequestAsync(ApprovalRequest request, CancellationToken ct) => Target.RequestAsync(request, ct);
+}

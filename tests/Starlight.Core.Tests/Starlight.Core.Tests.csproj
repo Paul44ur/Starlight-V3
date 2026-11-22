@@ -21,6 +21,7 @@
     <Compile Include="..\..\src\Starlight.Eval\EvalCase.cs" Link="Linked\EvalCase.cs" />
     <Compile Include="..\..\src\Starlight.Voice\SpeechText.cs" Link="Linked\SpeechText.cs" />
     <Compile Include="..\..\src\Starlight.Voice\AudioMath.cs" Link="Linked\AudioMath.cs" />
+    <Compile Include="..\..\src\Starlight.Overlay\OverlayGeometry.cs" Link="Linked\OverlayGeometry.cs" />
     <None Include="..\..\src\Starlight.Eval\cases\*.json" Link="cases\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
     <None Include="Fakes\**" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>

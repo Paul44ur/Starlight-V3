@@ -104,3 +104,23 @@ public static partial class SpeechText
     [GeneratedRegex(@"\s+")]
     private static partial Regex Spaces();
 }
+
+/// <summary>Spoken answers to a Yes/No card.</summary>
+public static class VoiceApproval
+{
+    public static Starlight.Tools.ApprovalAnswer? Parse(string heard)
+    {
+        var t = heard.Trim().TrimEnd('.', '!', ',').Trim().ToLowerInvariant();
+        if (t.StartsWith("always", StringComparison.Ordinal))
+        {
+            return Starlight.Tools.ApprovalAnswer.Always;
+        }
+        string[] yes = ["yes", "yeah", "yep", "sure", "ok", "okay", "do it", "go ahead", "yes please"];
+        string[] no = ["no", "nope", "don't", "do not", "cancel", "stop", "no thanks"];
+        if (yes.Contains(t))
+        {
+            return Starlight.Tools.ApprovalAnswer.Yes;
+        }
+        return no.Contains(t) ? Starlight.Tools.ApprovalAnswer.No : null;
+    }
+}

@@ -59,6 +59,12 @@ public sealed class VoiceLoop : IDisposable
         settings.Changed += _ => ApplySettings();
     }
 
+    /// <summary>Answers an open Yes/No card by voice. Returns true if a card was open. Set by the app.</summary>
+    public Func<Starlight.Tools.ApprovalAnswer, bool>? AnswerApproval { get; set; }
+
+    /// <summary>True while a Yes/No card is open (the turn waits for it, so listening must not cancel it).</summary>
+    public Func<bool>? ApprovalPending { get; set; }
+
     /// <summary>The conversation voice turns go into. A new one starts after 10 quiet minutes.</summary>
     public Conversation Conversation
     {
@@ -86,7 +92,7 @@ public sealed class VoiceLoop : IDisposable
         {
             _speaker.Stop(); // barge-in
         }
-        if (_agent.Busy)
+        if (_agent.Busy && ApprovalPending?.Invoke() != true)
         {
             _agent.CancelCurrent();
         }
@@ -114,6 +120,11 @@ public sealed class VoiceLoop : IDisposable
                 return;
             }
             _events.Publish(new UserSaid(text, "voice"));
+            if (ApprovalPending?.Invoke() == true && VoiceApproval.Parse(text) is { } answer)
+            {
+                AnswerApproval?.Invoke(answer);
+                return;
+            }
             if (StopWords.Contains(text.Trim().TrimEnd('.', '!').Trim()))
             {
                 _speaker.Stop();

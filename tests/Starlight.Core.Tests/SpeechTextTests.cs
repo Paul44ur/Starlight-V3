@@ -77,3 +77,16 @@ public sealed class AudioMathTests
         Assert.True(AudioMath.Level(Enumerable.Repeat(0.5f, 100).ToArray()) > 0.8);
     }
 }
+
+public sealed class VoiceApprovalTests
+{
+    [Theory]
+    [InlineData("Yes.", Starlight.Tools.ApprovalAnswer.Yes)]
+    [InlineData("go ahead", Starlight.Tools.ApprovalAnswer.Yes)]
+    [InlineData("No!", Starlight.Tools.ApprovalAnswer.No)]
+    [InlineData("Always allow it", Starlight.Tools.ApprovalAnswer.Always)]
+    [InlineData("open notepad", null)]
+    [InlineData("yes, and also close Word", null)]
+    public void Parses_spoken_answers(string heard, Starlight.Tools.ApprovalAnswer? expected) =>
+        Assert.Equal(expected, VoiceApproval.Parse(heard));
+}

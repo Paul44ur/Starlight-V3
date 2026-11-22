@@ -8,6 +8,8 @@ using Starlight.Events;
 using Starlight.Model;
 using Starlight.Tools.Desktop;
 using Starlight.Tools.Pc;
+using Starlight.Overlay;
+using Starlight.Tools;
 using Starlight.Voice;
 
 namespace Starlight.App;
@@ -21,6 +23,8 @@ internal sealed class Shell : IDisposable
     private readonly TaskbarIcon _tray;
     private readonly MenuItem _killItem;
     private readonly EventWaitHandle _showEvent;
+    private readonly OverlayManager _overlay;
+    private readonly MenuItem _orbKillItem = new();
     private readonly RegisteredWaitHandle _showWait;
     private GlobalHotkeys? _hotkeys;
     private Microphone? _mic;
@@ -34,11 +38,15 @@ internal sealed class Shell : IDisposable
     {
         _app = app;
         var paths = StarlightPaths.Default();
-        _core = AssistantCore.Start(paths, new WindowApprovals());
+        var approvals = new SwitchableApprovals();
+        _core = AssistantCore.Start(paths, approvals);
         _core.AddTools(new PcTools(), new AppTools(new AppCatalog()));
         _model = new ModelHost(_core.Settings, _core.Events, paths);
         _core.CreateAgent(() => _model.ChatClient);
         _core.KillSwitch.RegisterCleanup("speech", () => _speaker?.Stop());
+
+        _overlay = new OverlayManager(_core.Events, _core.Settings, BuildOrbMenu());
+        approvals.Target = _core.Settings.Current.Overlay.Enabled ? _overlay : new WindowApprovals();
 
         _killItem = new MenuItem();
         _tray = new TaskbarIcon
@@ -62,6 +70,7 @@ internal sealed class Shell : IDisposable
     public async Task StartAsync()
     {
         _tray.ForceCreate();
+        _overlay.Show();
         RegisterHotkeys();
         StartWithWindows.Apply(_core.Settings.Current.General.StartWithWindows);
         _ = Task.Run(StartVoice);
@@ -94,25 +103,50 @@ internal sealed class Shell : IDisposable
         Add("Report a problem…", ReportProblem);
         Add("Export diagnostics", ExportDiagnostics);
         menu.Items.Add(new Separator());
-        _killItem.Click += (_, _) =>
-        {
-            if (_core.KillSwitch.IsEngaged)
-            {
-                _core.KillSwitch.Resume();
-            }
-            else
-            {
-                _core.KillSwitch.Engage("tray menu");
-            }
-        };
+        _killItem.Click += (_, _) => ToggleKill("tray menu");
         menu.Items.Add(_killItem);
         menu.Items.Add(new Separator());
         Add("Quit Starlight", () => _app.Shutdown());
         return menu;
     }
 
-    private void UpdateKillItem() =>
-        _killItem.Header = _core.KillSwitch.IsEngaged ? "Resume Starlight" : $"Stop everything ({_core.Settings.Current.General.KillHotkey})";
+    private ContextMenu BuildOrbMenu()
+    {
+        var menu = new ContextMenu();
+        void Add(string header, Action onClick)
+        {
+            var item = new MenuItem { Header = header };
+            item.Click += (_, _) => onClick();
+            menu.Items.Add(item);
+        }
+        _orbKillItem.Click += (_, _) => ToggleKill("orb menu");
+        menu.Items.Add(_orbKillItem);
+        menu.Items.Add(new Separator());
+        Add("Settings", ShowSettings);
+        Add("Report a problem…", ReportProblem);
+        menu.Items.Add(new Separator());
+        Add("Quit Starlight", () => _app.Shutdown());
+        return menu;
+    }
+
+    private void ToggleKill(string source)
+    {
+        if (_core.KillSwitch.IsEngaged)
+        {
+            _core.KillSwitch.Resume();
+        }
+        else
+        {
+            _core.KillSwitch.Engage(source);
+        }
+    }
+
+    private void UpdateKillItem()
+    {
+        var header = _core.KillSwitch.IsEngaged ? "Resume Starlight" : $"Stop everything ({_core.Settings.Current.General.KillHotkey})";
+        _killItem.Header = header;
+        _orbKillItem.Header = header;
+    }
 
     /// <summary>Loads the voice models. Missing files are reported once; the rest of Starlight runs without voice.</summary>
     private void StartVoice()
@@ -135,7 +169,11 @@ internal sealed class Shell : IDisposable
             _mic = new Microphone(_core.Events, settings.InputDevice);
             _recognizer = new Recognizer(assets.WhisperModel, assets.VadModel);
             _speaker = new Speaker(assets.KokoroDir, _core.Events);
-            _voice = new VoiceLoop(_mic, _recognizer, _speaker, _core.Agent!, _core.Events, _core.Settings);
+            _voice = new VoiceLoop(_mic, _recognizer, _speaker, _core.Agent!, _core.Events, _core.Settings)
+            {
+                ApprovalPending = () => _overlay.IsAsking,
+                AnswerApproval = _overlay.AnswerByVoice,
+            };
             Log.Information("Voice ready; push-to-talk is {Key}", settings.PushToTalkHotkey);
         }
         catch (Exception ex)
@@ -228,6 +266,7 @@ internal sealed class Shell : IDisposable
         _showEvent.Dispose();
         _hotkeys?.Dispose();
         _voice?.Dispose();
+        _overlay.Dispose();
         _speaker?.Dispose();
         _recognizer?.Dispose();
         _mic?.Dispose();
