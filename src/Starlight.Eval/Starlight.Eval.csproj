@@ -10,6 +10,7 @@
     <ProjectReference Include="..\Starlight.Core\Starlight.Core.csproj" />
     <ProjectReference Include="..\Starlight.Model\Starlight.Model.csproj" />
     <ProjectReference Include="..\Starlight.Tools.Pc\Starlight.Tools.Pc.csproj" />
+    <ProjectReference Include="..\Starlight.Memory\Starlight.Memory.csproj" />
     <ProjectReference Include="..\Starlight.Tools.Desktop\Starlight.Tools.Desktop.csproj" />
   </ItemGroup>
   <ItemGroup>

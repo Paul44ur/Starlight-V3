@@ -9,6 +9,7 @@ using Microsoft.Extensions.AI;
 using Microsoft.Win32;
 using Starlight.Agent;
 using Starlight.Events;
+using Starlight.Memory;
 using Starlight.Storage;
 using Wpf.Ui.Controls;
 using Button = Wpf.Ui.Controls.Button;
@@ -28,6 +29,7 @@ internal sealed class ChatWindow : FluentWindow
     private static readonly string[] TextExtensions = [".txt", ".md", ".csv", ".json", ".log", ".xml", ".yaml", ".yml", ".ini", ".cs", ".py", ".js", ".ts", ".html", ".css", ".ps1", ".bat", ".sql"];
 
     private readonly AssistantCore _core;
+    private readonly MemoryStore _memory;
     private readonly Action _openSettings;
     private readonly System.Windows.Controls.ListBox _list = new() { BorderThickness = new Thickness(0), Background = Brushes.Transparent };
     private readonly TextBox _search = new() { PlaceholderText = "Search conversations", Margin = new Thickness(0, 8, 0, 8) };
@@ -44,9 +46,10 @@ internal sealed class ChatWindow : FluentWindow
     private string? _liveTurn;
     private TextBlock? _liveAnswer;
 
-    public ChatWindow(AssistantCore core, Action openSettings)
+    public ChatWindow(AssistantCore core, MemoryStore memory, Action openSettings)
     {
         _core = core;
+        _memory = memory;
         _openSettings = openSettings;
         Title = "Starlight";
         Width = 1040;
@@ -79,6 +82,7 @@ internal sealed class ChatWindow : FluentWindow
 
         var nav = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 8) };
         nav.Children.Add(NavButton("Chat", () => _view.Content = _chatView));
+        nav.Children.Add(NavButton("Memory", () => _view.Content = MemoryView()));
         nav.Children.Add(NavButton("Activity", () => _view.Content = ActivityView()));
         nav.Children.Add(NavButton("Statistics", () => _view.Content = StatisticsView()));
         nav.Children.Add(NavButton("Settings", _openSettings));
@@ -189,8 +193,11 @@ internal sealed class ChatWindow : FluentWindow
             rename.Click += async (_, _) => await RenameAsync(info);
             var delete = new System.Windows.Controls.MenuItem { Header = "Delete" };
             delete.Click += async (_, _) => await DeleteAsync(info);
+            var forget = new System.Windows.Controls.MenuItem { Header = "Forget what was learned here" };
+            forget.Click += async (_, _) => await ForgetLearnedAsync(info);
             menu.Items.Add(pin);
             menu.Items.Add(rename);
+            menu.Items.Add(forget);
             menu.Items.Add(delete);
             item.ContextMenu = menu;
             _list.Items.Add(item);
@@ -222,6 +229,21 @@ internal sealed class ChatWindow : FluentWindow
         if (_conversation?.Id == info.Id)
         {
             Show(FirstOrNew());
+        }
+    }
+
+    private async Task ForgetLearnedAsync(ConversationInfo info)
+    {
+        var count = _memory.All().Count(f => f.Conversation == info.Id);
+        if (count == 0)
+        {
+            await new Wpf.Ui.Controls.MessageBox { Title = "Forget this conversation", Content = $"Nothing was remembered from \"{info.Title}\".", CloseButtonText = "OK" }.ShowDialogAsync();
+            return;
+        }
+        var dialog = new Wpf.Ui.Controls.MessageBox { Title = "Forget this conversation", Content = $"Forget the {count} fact(s) Starlight learned in \"{info.Title}\"?", PrimaryButtonText = "Forget", CloseButtonText = "Cancel" };
+        if (await dialog.ShowDialogAsync() == Wpf.Ui.Controls.MessageBoxResult.Primary)
+        {
+            _memory.ForgetConversation(info.Id);
         }
     }
 
@@ -459,6 +481,44 @@ internal sealed class ChatWindow : FluentWindow
     }
 
     // ---- Activity and Statistics ----
+
+    private UIElement MemoryView()
+    {
+        var search = new TextBox { PlaceholderText = "Search memory", Margin = new Thickness(0, 0, 0, 8) };
+        var list = new StackPanel();
+        void Fill()
+        {
+            list.Children.Clear();
+            var facts = _memory.All(string.IsNullOrWhiteSpace(search.Text) ? null : search.Text.Trim());
+            if (facts.Count == 0)
+            {
+                list.Children.Add(new TextBlock { Text = string.IsNullOrWhiteSpace(search.Text) ? "Nothing remembered yet." : "No fact matches.", Foreground = Subtle });
+            }
+            foreach (var f in facts)
+            {
+                var row = new DockPanel();
+                var delete = new Button { Icon = new SymbolIcon(SymbolRegular.Delete24), ToolTip = "Forget this", Appearance = ControlAppearance.Transparent, VerticalAlignment = VerticalAlignment.Center };
+                delete.Click += (_, _) => { _memory.Forget(f.Id); Fill(); };
+                DockPanel.SetDock(delete, Dock.Right);
+                row.Children.Add(delete);
+                var text = new StackPanel();
+                text.Children.Add(new TextBlock { Text = f.Text, Foreground = Fg, TextWrapping = TextWrapping.Wrap });
+                text.Children.Add(new TextBlock { Text = $"{f.Topic} · {f.Updated:d MMM yyyy}", Foreground = Subtle, FontSize = 12 });
+                row.Children.Add(text);
+                list.Children.Add(new Border { Background = CardBg, CornerRadius = new CornerRadius(8), Padding = new Thickness(12, 8, 8, 8), Margin = new Thickness(0, 0, 0, 6), Child = row });
+            }
+        }
+        search.TextChanged += (_, _) => Fill();
+        Fill();
+        var panel = new DockPanel();
+        var head = new StackPanel();
+        head.Children.Add(new TextBlock { Text = "What Starlight remembers about you. Delete anything you don't want kept.", Foreground = Subtle, Margin = new Thickness(0, 0, 0, 8), TextWrapping = TextWrapping.Wrap });
+        head.Children.Add(search);
+        DockPanel.SetDock(head, Dock.Top);
+        panel.Children.Add(head);
+        panel.Children.Add(new ScrollViewer { Content = list, VerticalScrollBarVisibility = ScrollBarVisibility.Auto });
+        return panel;
+    }
 
     private UIElement ActivityView()
     {

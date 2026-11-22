@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using System.Diagnostics;
 using Starlight;
+using Starlight.Memory;
 using Starlight.Agent;
 using Starlight.Events;
 using Starlight.Model;
@@ -30,7 +31,9 @@ if (Opt("--model") is { } model)
     });
 }
 
-core.AddTools(new PcTools(), new AppTools(new AppCatalog()),
+var memory = new MemoryTools(new MemoryStore(core.Db));
+using var tracking = memory.TrackTurns(core.Events);
+core.AddTools(new PcTools(), new AppTools(new AppCatalog()), memory,
     new DesktopTools(new UiSnapshot(), core.Events, () => !string.IsNullOrWhiteSpace(core.Settings.Current.Model.VisionProjectorFile)));
 core.KillSwitch.RegisterCleanup("input", Input.ReleaseAll);
 if (argv.Contains("--dev-tools"))
@@ -38,7 +41,7 @@ if (argv.Contains("--dev-tools"))
     core.AddTools(new DevTools());
 }
 await using var host = new ModelHost(core.Settings, core.Events, paths, Opt("--server"));
-var agent = core.CreateAgent(() => host.ChatClient);
+var agent = core.CreateAgent(() => host.ChatClient, contributors: [memory]);
 
 using var hotkeys = new GlobalHotkeys([(core.Settings.Current.General.KillHotkey, () => core.KillSwitch.Engage("hotkey"))]);
 var killedAt = Stopwatch.StartNew();

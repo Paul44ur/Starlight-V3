@@ -4,6 +4,7 @@ using System.Windows;
 using System.Windows.Controls;
 using H.NotifyIcon;
 using Serilog;
+using Starlight.Memory;
 using Starlight.Events;
 using Starlight.Model;
 using Starlight.Tools.Desktop;
@@ -35,6 +36,8 @@ internal sealed class Shell : IDisposable
     private int _pttHeld;
     private SettingsWindow? _settings;
     private ChatWindow? _chat;
+    private readonly MemoryStore _memoryStore;
+    private readonly MemoryTools _memory;
 
     public Shell(App app)
     {
@@ -42,12 +45,15 @@ internal sealed class Shell : IDisposable
         var paths = StarlightPaths.Default();
         var approvals = new SwitchableApprovals();
         _core = AssistantCore.Start(paths, approvals);
-        _core.AddTools(new PcTools(), new AppTools(new AppCatalog()),
+        _memoryStore = new MemoryStore(_core.Db);
+        _memory = new MemoryTools(_memoryStore);
+        _memory.TrackTurns(_core.Events);
+        _core.AddTools(new PcTools(), new AppTools(new AppCatalog()), _memory,
             new DesktopTools(new UiSnapshot(), _core.Events, () => !string.IsNullOrWhiteSpace(_core.Settings.Current.Model.VisionProjectorFile)));
         _core.KillSwitch.RegisterCleanup("input", Input.ReleaseAll);
         _core.KillSwitch.RegisterCleanup("pointer", () => _core.Events.Publish(new ClearPointer()));
         _model = new ModelHost(_core.Settings, _core.Events, paths);
-        _core.CreateAgent(() => _model.ChatClient);
+        _core.CreateAgent(() => _model.ChatClient, contributors: [_memory]);
         _core.KillSwitch.RegisterCleanup("speech", () => _speaker?.Stop());
 
         _overlay = new OverlayManager(_core.Events, _core.Settings, BuildOrbMenu());
@@ -242,7 +248,7 @@ internal sealed class Shell : IDisposable
     {
         if (_chat is null)
         {
-            _chat = new ChatWindow(_core, ShowSettings);
+            _chat = new ChatWindow(_core, _memoryStore, ShowSettings);
             _chat.Closed += (_, _) => _chat = null;
         }
         _chat.Show();
