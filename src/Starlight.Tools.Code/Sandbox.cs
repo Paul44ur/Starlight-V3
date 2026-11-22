@@ -182,13 +182,21 @@ public sealed partial class AppContainerSandbox(string pythonDir, string scratch
             };
             var env = Environment("SYSTEMROOT=" + System.Environment.GetEnvironmentVariable("SYSTEMROOT"),
                 "TEMP=" + temp, "TMP=" + temp, "PYTHONIOENCODING=utf-8", "PYTHONDONTWRITEBYTECODE=1", "PYTHONUTF8=1", "PYTHONNOUSERSITE=1");
-            var cmd = new StringBuilder($"\"{python}\" -I -B \"{script}\" \"{folder}\"");
+            var cmd = new StringBuilder(JobObject.CommandLine(python, ["-I", "-B", script, folder]));
             if (!CreateProcessW(null, cmd, 0, 0, true, EXTENDED_STARTUPINFO_PRESENT | CREATE_SUSPENDED | CREATE_NO_WINDOW | CREATE_UNICODE_ENVIRONMENT,
                 env, folder, ref si, out pi))
             {
                 throw new ToolException($"The sandbox could not start Python (error {Marshal.GetLastWin32Error()}).");
             }
-            job.AddHandle(pi.hProcess);
+            try
+            {
+                job.AddHandle(pi.hProcess);
+            }
+            catch (Win32Exception)
+            {
+                TerminateProcess(pi.hProcess, 1); // never let it run outside the limits
+                throw new ToolException("The sandbox could not put Python under its limits, so it did not run.");
+            }
             ResumeThread(pi.hThread);
             writePipe.Dispose(); // only the child holds the write end now, so reading ends when it exits
 
@@ -338,6 +346,9 @@ public sealed partial class AppContainerSandbox(string pythonDir, string scratch
 
     [DllImport("kernel32.dll")]
     private static extern uint ResumeThread(nint thread);
+
+    [DllImport("kernel32.dll")]
+    private static extern bool TerminateProcess(nint process, uint exitCode);
 
     [DllImport("kernel32.dll")]
     private static extern uint WaitForSingleObject(nint handle, uint ms);

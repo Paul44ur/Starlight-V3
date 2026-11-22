@@ -123,7 +123,7 @@ public sealed partial class JobObject : IDisposable
     }
 
     /// <summary>A Windows command line that the C runtime splits back into exactly these arguments.</summary>
-    internal static string CommandLine(string exe, IEnumerable<string> args)
+    public static string CommandLine(string exe, IEnumerable<string> args)
     {
         var sb = new System.Text.StringBuilder();
         Quote(sb, exe);
