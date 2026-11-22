@@ -14,7 +14,10 @@ before claiming anything is finished, and check the code too.
 | 2026-11-22 | 14496be | App shell `Starlight.exe`: single instance, tray menu, Settings window (General, Voice, Model, Permissions, Diagnostics), report a problem, export diagnostics, start with Windows | Builds; `dotnet publish -r win-x64 --self-contained` works in the container (183 MB). Not run on Windows yet |
 | 2026-11-22 | 99373de | Voice: push-to-talk, Silero VAD + whisper.cpp (Whisper.net, Vulkan), Kokoro through sherpa-onnx, sentence streaming, barge-in, stop words | Sentence splitting, speech text, audio conversion tested in the container. Microphone, whisper, Kokoro: built, not run |
 | 2026-11-22 | 41a06d6 | Overlay: glowing orb with states, captions, pointer across monitors, ask card (also answered by voice), red control frame, hidden for full-screen apps | Geometry (two monitors, 125 %) tested in the container. Windows: built, not run |
-| 2026-11-22 | (next) | Desktop tools: `screen_look` (numbered controls + picture or OCR), `screen_find`, `screen_point`, `input_click`, `input_type`, `input_keys`, `window`; act-and-check; pictures go to the model once and are then dropped | Target parsing, key names, picture handling tested in the container. UI Automation, OCR, input: built, not run |
+| 2026-11-22 | 0aa417a | Desktop tools: `screen_look` (numbered controls + picture or OCR), `screen_find`, `screen_point`, `input_click`, `input_type`, `input_keys`, `window`; act-and-check; pictures go to the model once and are then dropped | Target parsing, key names, picture handling tested in the container. UI Automation, OCR, input: built, not run |
+| 2026-11-22 | 299f1bd | Wake phrase: sherpa-onnx keyword spotting for any typed phrase ("Hey Starlight" by default), hands-free end of speech | Phrase-to-token logic tested in the container. Keyword spotting: built, not run |
+| 2026-11-22 | e960420 | Chat window: conversations (search, pin, rename, delete), native Markdown, tool steps, attachments, Activity and Statistics views | Builds. Windows: not run |
+| 2026-11-22 | 6b9e3cb | Memory: `memory_remember` (same topic replaces, old kept in history), `memory_recall`, `memory_forget` (asks); top 5 matching facts in each prompt; Memory view (search, delete); "Forget what was learned here" per conversation | 7 tests in the container (replace with history, FTS search, FTS syntax in requests, forget, forget a conversation, tools through the dispatcher, forget asks). 92 tests pass. Memory view: built, not run |
 
 ## In progress
 - P0/P1 on the PC: get llama-server (Vulkan) and 3-4 candidate models, run the eval as the model benchmark, then the P1 acceptance in the console ("open Notepad", Ctrl+Alt+J during `dev_wait 10`).
@@ -23,6 +26,7 @@ before claiming anything is finished, and check the code too.
 - Kokoro runs through sherpa-onnx, not KokoroSharp: one ONNX runtime for VAD, speech and the wake phrase (R6).
 - The external model endpoint setting was removed (R6: one model runtime).
 - Tool projects: `Starlight.Tools.Pc` holds `system_info` and `files_find` (not in the plan's project table).
+- Memory uses FTS5 (bm25) only, no vector search and no expiry yet. Add embeddings only if the eval shows recall misses.
 - The design mock-up step of P0 is replaced by building the chosen look (glowing orb) directly; the user judges it in the beta.
 
 ## Open questions for the user (ask with the beta, or earlier if blocking)
