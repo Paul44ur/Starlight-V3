@@ -79,10 +79,6 @@ public sealed class AgentLoop(
                 Temperature = (float)settings.Current.Model.Temperature,
                 AllowMultipleToolCalls = false,
             };
-            if (!string.IsNullOrWhiteSpace(settings.Current.Model.ExternalModelName))
-            {
-                options.ModelId = settings.Current.Model.ExternalModelName;
-            }
 
             var answer = new StringBuilder();
             var maxSteps = Math.Max(1, settings.Current.Model.MaxSteps);

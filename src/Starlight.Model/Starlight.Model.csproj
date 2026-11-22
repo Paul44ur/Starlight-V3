@@ -1,9 +1,16 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
-
+<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
-    <ImplicitUsings>enable</ImplicitUsings>
-    <Nullable>enable</Nullable>
+    <RootNamespace>Starlight.Model</RootNamespace>
   </PropertyGroup>
-
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.AI.OpenAI" />
+    <PackageReference Include="OpenAI" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Starlight.Core\Starlight.Core.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="Starlight.Core.Tests" />
+  </ItemGroup>
 </Project>

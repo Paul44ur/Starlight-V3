@@ -4,7 +4,7 @@ using Serilog;
 
 namespace Starlight.Diagnostics;
 
-/// <summary>Builds the one zip Paul sends back after a bulk test: logs, crashes, reports, trace, settings, system info.</summary>
+/// <summary>Builds the one zip the user sends back after a bulk test: logs, crashes, reports, trace, settings, system info.</summary>
 public sealed class DiagnosticsExporter(StarlightPaths paths, Func<string> settingsJson, Func<string> systemInfo)
 {
     public string Export(string targetDir, int traceDays = 7)

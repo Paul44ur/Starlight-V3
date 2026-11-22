@@ -12,5 +12,9 @@
   <ItemGroup>
     <Using Include="Xunit" />
     <ProjectReference Include="..\..\src\Starlight.Core\Starlight.Core.csproj" />
+    <ProjectReference Include="..\..\src\Starlight.Model\Starlight.Model.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="Fakes\**" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

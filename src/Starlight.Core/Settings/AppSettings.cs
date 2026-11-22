@@ -41,9 +41,6 @@ public sealed class ModelSettings
     public double Temperature { get; set; } = 0.4;
     public int MaxSteps { get; set; } = 8;
     public string ExtraServerArgs { get; set; } = "";
-    /// <summary>Use an already running OpenAI-compatible server instead of the bundled one (LM Studio, Ollama, another llama-server).</summary>
-    public string ExternalEndpoint { get; set; } = "";
-    public string ExternalModelName { get; set; } = "";
 }
 
 public sealed class VoiceSettings
