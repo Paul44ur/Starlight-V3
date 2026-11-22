@@ -1,0 +1,186 @@
+using System.Diagnostics;
+using Serilog;
+using Starlight.Agent;
+using Starlight.Events;
+using Starlight.Settings;
+
+namespace Starlight.Voice;
+
+/// <summary>
+/// Push-to-talk turn: listen while the key is held, write down what was said, run the turn,
+/// speak the answer sentence by sentence. Pressing the key while Starlight talks stops it (barge-in).
+/// </summary>
+public sealed class VoiceLoop : IDisposable
+{
+    private static readonly HashSet<string> StopWords = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "stop", "cancel", "never mind", "nevermind", "be quiet", "shut up", "quiet", "stop it", "that's enough",
+    };
+
+    private readonly Microphone _mic;
+    private readonly Recognizer _recognizer;
+    private readonly Speaker _speaker;
+    private readonly AgentLoop _agent;
+    private readonly EventHub _events;
+    private readonly SettingsStore _settings;
+    private readonly IDisposable _deltaSub;
+    private readonly IDisposable _killSub;
+    private Conversation _conversation = new();
+    private DateTime _lastTurn = DateTime.MinValue;
+    private SentenceSplitter? _splitter;
+    private string? _turnId;
+    private Task? _running;
+
+    public VoiceLoop(Microphone mic, Recognizer recognizer, Speaker speaker, AgentLoop agent, EventHub events, SettingsStore settings)
+    {
+        _mic = mic;
+        _recognizer = recognizer;
+        _speaker = speaker;
+        _agent = agent;
+        _events = events;
+        _settings = settings;
+        _deltaSub = events.Subscribe<AnswerDelta>(OnDelta);
+        _killSub = events.Subscribe<KillSwitchChanged>(k =>
+        {
+            if (k.Engaged)
+            {
+                _speaker.Stop();
+                _mic.EndUtterance();
+            }
+        });
+        _speaker.Finished += () =>
+        {
+            if (!_agent.Busy && !_mic.IsRecording)
+            {
+                _events.Publish(new StateChanged(AssistantState.Idle));
+            }
+        };
+        ApplySettings();
+        settings.Changed += _ => ApplySettings();
+    }
+
+    /// <summary>The conversation voice turns go into. A new one starts after 10 quiet minutes.</summary>
+    public Conversation Conversation
+    {
+        get
+        {
+            if (DateTime.UtcNow - _lastTurn > TimeSpan.FromMinutes(10))
+            {
+                _conversation = new Conversation();
+            }
+            return _conversation;
+        }
+        set => _conversation = value;
+    }
+
+    private void ApplySettings()
+    {
+        _speaker.Voice = _settings.Current.Voice.Voice;
+        _speaker.Rate = (float)_settings.Current.Voice.SpeechRate;
+    }
+
+    /// <summary>The push-to-talk key went down.</summary>
+    public void StartListening()
+    {
+        if (_speaker.IsSpeaking)
+        {
+            _speaker.Stop(); // barge-in
+        }
+        if (_agent.Busy)
+        {
+            _agent.CancelCurrent();
+        }
+        _mic.BeginUtterance();
+        _events.Publish(new StateChanged(AssistantState.Listening));
+    }
+
+    /// <summary>The push-to-talk key came up: understand and answer.</summary>
+    public void StopListening()
+    {
+        var audio = _mic.EndUtterance();
+        _running = Task.Run(() => HandleAsync(audio));
+    }
+
+    private async Task HandleAsync(float[] audio)
+    {
+        var sw = Stopwatch.StartNew();
+        try
+        {
+            _events.Publish(new StateChanged(AssistantState.Thinking));
+            var text = await _recognizer.TranscribeAsync(audio, CancellationToken.None);
+            if (text.Length == 0)
+            {
+                _events.Publish(new StateChanged(AssistantState.Idle, "Nothing heard"));
+                return;
+            }
+            _events.Publish(new UserSaid(text, "voice"));
+            if (StopWords.Contains(text.Trim().TrimEnd('.', '!').Trim()))
+            {
+                _speaker.Stop();
+                _agent.CancelCurrent();
+                _events.Publish(new StateChanged(AssistantState.Idle));
+                return;
+            }
+            _splitter = new SentenceSplitter();
+            var conversation = Conversation;
+            var heardAt = sw.Elapsed;
+            var outcome = await _agent.RunAsync(conversation, text, "voice");
+            _lastTurn = DateTime.UtcNow;
+            if (_splitter?.Flush() is { } rest)
+            {
+                Say(rest);
+            }
+            if (outcome.Failed && !string.IsNullOrWhiteSpace(outcome.Answer))
+            {
+                Say(outcome.Answer); // failures are not streamed, so speak them here
+            }
+            _splitter = null;
+            _turnId = null;
+            Log.Information("Voice turn: heard after {Heard:0.00} s, done after {Total:0.00} s", heardAt.TotalSeconds, sw.Elapsed.TotalSeconds);
+            if (_speaker.IsSpeaking)
+            {
+                _events.Publish(new StateChanged(AssistantState.Speaking));
+            }
+        }
+        catch (Exception ex)
+        {
+            Log.Error(ex, "Voice turn failed");
+            _events.Publish(new StateChanged(AssistantState.Idle));
+        }
+    }
+
+    private void OnDelta(AnswerDelta d)
+    {
+        var splitter = _splitter;
+        if (splitter is null)
+        {
+            return;
+        }
+        _turnId ??= d.TurnId;
+        if (_turnId != d.TurnId)
+        {
+            return;
+        }
+        foreach (var sentence in splitter.Add(d.Delta))
+        {
+            Say(sentence);
+        }
+    }
+
+    private void Say(string sentence)
+    {
+        if (!_settings.Current.Voice.SpeakAnswers)
+        {
+            return;
+        }
+        _speaker.Say(sentence);
+        _events.Publish(new StateChanged(AssistantState.Speaking));
+    }
+
+    public void Dispose()
+    {
+        _deltaSub.Dispose();
+        _killSub.Dispose();
+        _running?.Wait(TimeSpan.FromSeconds(2));
+    }
+}

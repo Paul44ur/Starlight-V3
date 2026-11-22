@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
+    <SupportedOSPlatformVersion>10.0.19041.0</SupportedOSPlatformVersion>
+    <RootNamespace>Starlight.Voice</RootNamespace>
+    <!-- NAudio 3 marks WasapiCapture/WasapiOut obsolete in favour of new builders; the old ones are proven and kept for now. -->
+    <NoWarn>$(NoWarn);CS0618</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Whisper.net" />
+    <PackageReference Include="Whisper.net.Runtime.Vulkan" />
+    <PackageReference Include="org.k2fsa.sherpa.onnx" />
+    <PackageReference Include="NAudio" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Starlight.Core\Starlight.Core.csproj" />
+  </ItemGroup>
+</Project>

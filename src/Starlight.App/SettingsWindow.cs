@@ -42,6 +42,7 @@ internal sealed class SettingsWindow : FluentWindow
 
         var tabs = new TabControl { TabStripPlacement = Dock.Left, Margin = new Thickness(12, 40, 12, 0) };
         tabs.Items.Add(Tab("General", General()));
+        tabs.Items.Add(Tab("Voice", VoiceSection()));
         tabs.Items.Add(Tab("Model", ModelSection()));
         tabs.Items.Add(Tab("Permissions", Permissions()));
         tabs.Items.Add(Tab("Diagnostics", Diagnostics(export, report)));
@@ -128,6 +129,43 @@ internal sealed class SettingsWindow : FluentWindow
         autostart.Click += (_, _) => g.StartWithWindows = autostart.IsChecked == true;
         Row(p, "Startup", autostart);
         Row(p, "Stop-everything hotkey", Text(g.KillHotkey, v => g.KillHotkey = v.Trim()), "Stops every action at once. For example Ctrl+Alt+J.");
+        return p;
+    }
+
+    private UIElement VoiceSection()
+    {
+        var v = _draft.Voice;
+        var p = Section("Voice", "Hold the push-to-talk keys, speak, and let go. Press them again while Starlight talks to interrupt it.");
+        var enabled = new ToggleSwitch { IsChecked = v.Enabled, Content = "Use voice (takes effect after a restart of Starlight)" };
+        enabled.Click += (_, _) => v.Enabled = enabled.IsChecked == true;
+        Row(p, "Voice", enabled);
+        Row(p, "Push-to-talk keys", Text(v.PushToTalkHotkey, t => v.PushToTalkHotkey = t.Trim()), "Hold to talk. For example Ctrl+Alt+Space.");
+        var speak = new ToggleSwitch { IsChecked = v.SpeakAnswers, Content = "Speak answers out loud" };
+        speak.Click += (_, _) => v.SpeakAnswers = speak.IsChecked == true;
+        Row(p, "Answers", speak);
+        var voices = new ComboBox { Width = 200, HorizontalAlignment = HorizontalAlignment.Left, ItemsSource = Starlight.Voice.Speaker.DefaultVoices, SelectedItem = v.Voice };
+        voices.SelectionChanged += (_, _) => v.Voice = voices.SelectedItem as string ?? v.Voice;
+        Row(p, "Speaking voice", voices, "af = American female, am = American male, bf/bm = British.");
+        var rate = new Slider { Minimum = 0.7, Maximum = 1.5, Value = v.SpeechRate, Width = 240, HorizontalAlignment = HorizontalAlignment.Left, TickFrequency = 0.1, IsSnapToTickEnabled = true };
+        rate.ValueChanged += (_, _) => v.SpeechRate = Math.Round(rate.Value, 1);
+        Row(p, "Speaking speed", rate);
+        var mics = new ComboBox { Width = 320, HorizontalAlignment = HorizontalAlignment.Left };
+        mics.Items.Add("(Windows default)");
+        try
+        {
+            using var devices = new NAudio.CoreAudioApi.MMDeviceEnumerator();
+            foreach (var d in devices.EnumerateAudioEndPoints(NAudio.CoreAudioApi.DataFlow.Capture, NAudio.CoreAudioApi.DeviceState.Active))
+            {
+                mics.Items.Add(d.FriendlyName);
+            }
+        }
+        catch (Exception ex)
+        {
+            Serilog.Log.Warning(ex, "Could not list microphones");
+        }
+        mics.SelectedItem = string.IsNullOrEmpty(v.InputDevice) ? "(Windows default)" : v.InputDevice;
+        mics.SelectionChanged += (_, _) => v.InputDevice = mics.SelectedIndex <= 0 ? "" : mics.SelectedItem as string ?? "";
+        Row(p, "Microphone", mics, "Takes effect after a restart of Starlight.");
         return p;
     }
 
@@ -236,6 +274,7 @@ internal sealed class SettingsWindow : FluentWindow
         _core.Settings.Update(s =>
         {
             s.General = _draft.General;
+            s.Voice = _draft.Voice;
             s.Model = _draft.Model;
             s.PermissionOverrides = _draft.PermissionOverrides;
         });

@@ -8,6 +8,7 @@ using Starlight.Events;
 using Starlight.Model;
 using Starlight.Tools.Desktop;
 using Starlight.Tools.Pc;
+using Starlight.Voice;
 
 namespace Starlight.App;
 
@@ -22,6 +23,11 @@ internal sealed class Shell : IDisposable
     private readonly EventWaitHandle _showEvent;
     private readonly RegisteredWaitHandle _showWait;
     private GlobalHotkeys? _hotkeys;
+    private Microphone? _mic;
+    private Recognizer? _recognizer;
+    private Speaker? _speaker;
+    private VoiceLoop? _voice;
+    private int _pttHeld;
     private SettingsWindow? _settings;
 
     public Shell(App app)
@@ -32,6 +38,7 @@ internal sealed class Shell : IDisposable
         _core.AddTools(new PcTools(), new AppTools(new AppCatalog()));
         _model = new ModelHost(_core.Settings, _core.Events, paths);
         _core.CreateAgent(() => _model.ChatClient);
+        _core.KillSwitch.RegisterCleanup("speech", () => _speaker?.Stop());
 
         _killItem = new MenuItem();
         _tray = new TaskbarIcon
@@ -57,6 +64,7 @@ internal sealed class Shell : IDisposable
         _tray.ForceCreate();
         RegisterHotkeys();
         StartWithWindows.Apply(_core.Settings.Current.General.StartWithWindows);
+        _ = Task.Run(StartVoice);
         if (string.IsNullOrWhiteSpace(_core.Settings.Current.Model.ChatModelFile))
         {
             ShowSettings();
@@ -106,10 +114,61 @@ internal sealed class Shell : IDisposable
     private void UpdateKillItem() =>
         _killItem.Header = _core.KillSwitch.IsEngaged ? "Resume Starlight" : $"Stop everything ({_core.Settings.Current.General.KillHotkey})";
 
+    /// <summary>Loads the voice models. Missing files are reported once; the rest of Starlight runs without voice.</summary>
+    private void StartVoice()
+    {
+        var settings = _core.Settings.Current.Voice;
+        if (!settings.Enabled)
+        {
+            return;
+        }
+        try
+        {
+            var assets = new VoiceAssets(_core.Paths, _core.Settings);
+            var missing = assets.Missing();
+            if (missing.Count > 0)
+            {
+                Log.Warning("Voice is off, missing: {Missing}", string.Join("; ", missing));
+                _core.Events.Publish(new Notice("Voice is off: some voice files are missing. Details are in the log.", NoticeLevel.Warning));
+                return;
+            }
+            _mic = new Microphone(_core.Events, settings.InputDevice);
+            _recognizer = new Recognizer(assets.WhisperModel, assets.VadModel);
+            _speaker = new Speaker(assets.KokoroDir, _core.Events);
+            _voice = new VoiceLoop(_mic, _recognizer, _speaker, _core.Agent!, _core.Events, _core.Settings);
+            Log.Information("Voice ready; push-to-talk is {Key}", settings.PushToTalkHotkey);
+        }
+        catch (Exception ex)
+        {
+            Log.Error(ex, "Voice could not start");
+            _core.Events.Publish(new Notice("Voice could not start. It's in the error log.", NoticeLevel.Error));
+        }
+    }
+
+    private void PushToTalk()
+    {
+        if (_voice is null || Interlocked.Exchange(ref _pttHeld, 1) == 1)
+        {
+            return;
+        }
+        _voice.StartListening();
+        var (_, key) = HotkeyParser.Parse(_core.Settings.Current.Voice.PushToTalkHotkey);
+        _ = Task.Run(async () =>
+        {
+            await KeyState.WaitForReleaseAsync(key, TimeSpan.FromSeconds(60));
+            Interlocked.Exchange(ref _pttHeld, 0);
+            _voice.StopListening();
+        });
+    }
+
     private void RegisterHotkeys()
     {
         _hotkeys?.Dispose();
-        _hotkeys = new GlobalHotkeys([(_core.Settings.Current.General.KillHotkey, () => _core.KillSwitch.Engage("hotkey"))]);
+        _hotkeys = new GlobalHotkeys(
+        [
+            (_core.Settings.Current.General.KillHotkey, () => _core.KillSwitch.Engage("hotkey")),
+            (_core.Settings.Current.Voice.PushToTalkHotkey, PushToTalk),
+        ]);
         _ = _hotkeys.Failed.ContinueWith(t =>
         {
             foreach (var key in t.Result)
@@ -168,6 +227,10 @@ internal sealed class Shell : IDisposable
         _showWait.Unregister(null);
         _showEvent.Dispose();
         _hotkeys?.Dispose();
+        _voice?.Dispose();
+        _speaker?.Dispose();
+        _recognizer?.Dispose();
+        _mic?.Dispose();
         _model.DisposeAsync().AsTask().Wait(TimeSpan.FromSeconds(5));
         _tray.Dispose();
         _core.Dispose();
