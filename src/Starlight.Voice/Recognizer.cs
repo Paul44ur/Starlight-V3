@@ -9,16 +9,19 @@ namespace Starlight.Voice;
 /// <summary>Speech to text: Silero VAD keeps only the speech, whisper.cpp (Vulkan) writes it down, in English.</summary>
 public sealed class Recognizer : IDisposable
 {
-    private readonly WhisperFactory _whisper;
-    private readonly WhisperProcessor _processor;
+    private readonly string _whisperModel;
+    private WhisperFactory? _whisper;
+    private WhisperProcessor? _processor;
     private readonly VadModelConfig _vadConfig;
     private readonly SemaphoreSlim _one = new(1, 1);
 
+    /// <summary>Game mode: whisper leaves the graphics card and only loads for one request at a time.</summary>
+    public bool KeepUnloaded { get; private set; }
+
     public Recognizer(string whisperModel, string vadModel)
     {
-        var sw = Stopwatch.StartNew();
-        _whisper = WhisperFactory.FromPath(whisperModel);
-        _processor = _whisper.CreateBuilder().WithLanguage("en").WithNoContext().WithThreads(Math.Max(2, Environment.ProcessorCount / 2)).Build();
+        _whisperModel = whisperModel;
+        Load();
         _vadConfig = new VadModelConfig
         {
             SampleRate = Microphone.SampleRate,
@@ -33,7 +36,50 @@ public sealed class Recognizer : IDisposable
                 WindowSize = 512,
             },
         };
+    }
+
+    private WhisperProcessor Load()
+    {
+        if (_processor is not null)
+        {
+            return _processor;
+        }
+        var sw = Stopwatch.StartNew();
+        _whisper = WhisperFactory.FromPath(_whisperModel);
+        _processor = _whisper.CreateBuilder().WithLanguage("en").WithNoContext().WithThreads(Math.Max(2, Environment.ProcessorCount / 2)).Build();
         Log.Information("Speech recognition loaded in {Ms} ms", sw.ElapsedMilliseconds);
+        return _processor;
+    }
+
+    private void Unload()
+    {
+        _processor?.Dispose();
+        _whisper?.Dispose();
+        _processor = null;
+        _whisper = null;
+    }
+
+    /// <summary>Frees the graphics card (true) or loads whisper again (false).</summary>
+    public async Task SetUnloadedAsync(bool unloaded)
+    {
+        await _one.WaitAsync();
+        try
+        {
+            KeepUnloaded = unloaded;
+            if (unloaded)
+            {
+                Unload();
+                Log.Information("Speech recognition unloaded for game mode");
+            }
+            else
+            {
+                Load();
+            }
+        }
+        finally
+        {
+            _one.Release();
+        }
     }
 
     /// <summary>A detector for hands-free listening: tells when the user has finished speaking.</summary>
@@ -73,7 +119,7 @@ public sealed class Recognizer : IDisposable
         {
             var sw = Stopwatch.StartNew();
             var text = new StringBuilder();
-            await foreach (var segment in _processor.ProcessAsync(padded, ct))
+            await foreach (var segment in Load().ProcessAsync(padded, ct))
             {
                 text.Append(segment.Text);
             }
@@ -83,14 +129,17 @@ public sealed class Recognizer : IDisposable
         }
         finally
         {
+            if (KeepUnloaded)
+            {
+                Unload();
+            }
             _one.Release();
         }
     }
 
     public void Dispose()
     {
-        _processor.Dispose();
-        _whisper.Dispose();
+        Unload();
         _one.Dispose();
     }
 }

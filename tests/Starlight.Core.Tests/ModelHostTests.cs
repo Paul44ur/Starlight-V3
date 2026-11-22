@@ -147,3 +147,46 @@ public sealed class ModelHostTests
         Assert.Contains("model file is missing", ex.Message);
     }
 }
+
+public sealed class GameModeTests
+{
+    [Fact]
+    public async Task Turns_on_after_two_checks_and_off_after_three()
+    {
+        using var env = new TestEnv();
+        var fullScreen = false;
+        var mode = new Starlight.Model.GameMode(env.Settings, () => fullScreen, () => []);
+        var changes = new List<(bool, string)>();
+        mode.Changed += (on, game) => { changes.Add((on, game)); return Task.CompletedTask; };
+
+        fullScreen = true;
+        await mode.TickAsync();
+        Assert.Empty(changes);
+        await mode.TickAsync();
+        Assert.Equal([(true, "a full-screen game")], changes);
+        fullScreen = false;
+        await mode.TickAsync();
+        fullScreen = true; // a quick alt-tab back
+        await mode.TickAsync();
+        fullScreen = false;
+        await mode.TickAsync();
+        await mode.TickAsync();
+        Assert.Single(changes);
+        await mode.TickAsync();
+        Assert.Equal((false, ""), changes[1]);
+    }
+
+    [Fact]
+    public async Task Listed_programs_count_and_the_setting_turns_it_off()
+    {
+        using var env = new TestEnv();
+        env.Settings.Update(s => s.General.GameProcesses = ["Cyberpunk2077.exe"]);
+        var mode = new Starlight.Model.GameMode(env.Settings, () => false, () => ["explorer", "cyberpunk2077"]);
+        Assert.Equal("Cyberpunk2077", mode.Detect());
+        env.Settings.Update(s => s.General.GameMode = false);
+        Assert.Null(mode.Detect());
+        await mode.TickAsync();
+        await mode.TickAsync();
+        Assert.False(mode.Active);
+    }
+}

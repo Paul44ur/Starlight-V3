@@ -136,6 +136,11 @@ internal sealed class SettingsWindow : FluentWindow
         autostart.Click += (_, _) => g.StartWithWindows = autostart.IsChecked == true;
         Row(p, "Startup", autostart);
         Row(p, "Stop-everything hotkey", Text(g.KillHotkey, v => g.KillHotkey = v.Trim()), "Stops every action at once. For example Ctrl+Alt+J.");
+        var game = new ToggleSwitch { IsChecked = g.GameMode, Content = "Pause while a game runs" };
+        game.Click += (_, _) => g.GameMode = game.IsChecked == true;
+        Row(p, "Game mode", game, "Stops the model and speech recognition while a game runs full screen, so the graphics card is free for it.");
+        Row(p, "Games", Text(string.Join(", ", g.GameProcesses), v => g.GameProcesses = [.. v.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)]),
+            "Optional. Programs that count as games even in a window, separated by commas. For example eldenring.exe, cs2.exe.");
         return p;
     }
 

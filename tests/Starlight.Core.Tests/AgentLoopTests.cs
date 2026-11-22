@@ -117,6 +117,22 @@ public sealed class AgentLoopTests
     }
 
     [Fact]
+    public async Task Game_mode_pause_answers_without_calling_the_model()
+    {
+        using var env = new TestEnv();
+        var client = new ScriptedChatClient(_ => ScriptedChatClient.Text("x"));
+        var loop = Loop(env, client);
+        loop.PausedReason = "Paused for a game.";
+        var paused = await loop.RunAsync(new Conversation(), "hi", "voice");
+        Assert.True(paused.Failed);
+        Assert.Equal("Paused for a game.", paused.Answer);
+        Assert.Empty(client.Sent);
+
+        loop.PausedReason = null;
+        Assert.False((await loop.RunAsync(new Conversation(), "hi", "voice")).Failed);
+    }
+
+    [Fact]
     public async Task Model_connection_error_is_reported_not_thrown()
     {
         using var env = new TestEnv();

@@ -28,6 +28,9 @@ public sealed class AgentLoop(
     IEnumerable<IPromptContributor> contributors,
     IEnumerable<ITurnObserver> observers)
 {
+    /// <summary>Set while game mode has the model stopped: every turn answers with this.</summary>
+    public string? PausedReason { get; set; }
+
     private readonly SemaphoreSlim _oneTurn = new(1, 1);
     private CancellationTokenSource? _current;
 
@@ -52,6 +55,10 @@ public sealed class AgentLoop(
             if (killSwitch.IsEngaged)
             {
                 return Finish(turnId, "I'm stopped. Resume me from the orb or the tray first.", failed: true);
+            }
+            if (PausedReason is { } paused)
+            {
+                return Finish(turnId, paused, failed: true);
             }
             var client = chatClient();
             if (client is null)

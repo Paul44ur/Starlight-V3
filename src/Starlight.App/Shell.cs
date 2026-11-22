@@ -108,6 +108,7 @@ internal sealed class Shell : IDisposable
         StartWithWindows.Apply(_core.Settings.Current.General.StartWithWindows);
         _ = Task.Run(StartVoice);
         _watcher.Start();
+        StartGameMode();
         if (SetupWindow.Needed(_core))
         {
             ShowSetup();
@@ -278,6 +279,63 @@ internal sealed class Shell : IDisposable
     }
 
     private SetupWindow? _setup;
+    private System.Threading.Timer? _gameTimer;
+
+    /// <summary>Game mode: checks every 5 seconds; a game stops the model and whisper, its end starts them again.</summary>
+    private void StartGameMode()
+    {
+        var mode = new GameMode(_core.Settings, GameDetect.D3DFullScreen,
+            () => System.Diagnostics.Process.GetProcesses().Select(p => { using (p) { return p.ProcessName; } }).ToHashSet(StringComparer.OrdinalIgnoreCase));
+        mode.Changed += async (on, game) =>
+        {
+            if (on)
+            {
+                _core.Agent!.PausedReason = $"I'm paused while {game} runs, so the graphics card is free for it. I'll be back when it ends.";
+                await _model.StopAsync(ModelState.Paused);
+                if (_recognizer is not null)
+                {
+                    await _recognizer.SetUnloadedAsync(true);
+                }
+                _core.Events.Publish(new StateChanged(AssistantState.Paused, "game"));
+            }
+            else
+            {
+                _core.Agent!.PausedReason = null;
+                if (_recognizer is not null)
+                {
+                    await _recognizer.SetUnloadedAsync(false);
+                }
+                _core.Events.Publish(new StateChanged(AssistantState.Idle));
+                if (_model.State == ModelState.Paused)
+                {
+                    try
+                    {
+                        await _model.StartAsync();
+                    }
+                    catch (ModelHostException ex)
+                    {
+                        Log.Error("Model did not come back after game mode: {Reason}", ex.Message);
+                    }
+                }
+            }
+        };
+        var busy = 0;
+        _gameTimer = new System.Threading.Timer(async _ =>
+        {
+            if (Interlocked.Exchange(ref busy, 1) == 1)
+            {
+                return;
+            }
+            try
+            {
+                await mode.TickAsync();
+            }
+            finally
+            {
+                Interlocked.Exchange(ref busy, 0);
+            }
+        }, null, TimeSpan.FromSeconds(10), TimeSpan.FromSeconds(5));
+    }
 
     public void ShowSetup()
     {
@@ -366,6 +424,7 @@ internal sealed class Shell : IDisposable
         _wake?.Dispose();
         _recognizer?.Dispose();
         _mic?.Dispose();
+        _gameTimer?.Dispose();
         _watcher.Dispose();
         _skillRecorder.Dispose();
         _probe.Dispose();
