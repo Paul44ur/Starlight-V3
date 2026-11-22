@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>Starlight.Skills</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="Starlight.Core.Tests" />
+    <ProjectReference Include="..\Starlight.Core\Starlight.Core.csproj" />
+  </ItemGroup>
+</Project>

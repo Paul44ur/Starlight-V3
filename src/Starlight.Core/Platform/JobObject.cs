@@ -64,6 +64,24 @@ public sealed partial class JobObject : IDisposable
         }
     }
 
+    /// <summary>Adds a process by its raw handle (the sandbox starts processes itself, suspended).</summary>
+    public void AddHandle(nint process)
+    {
+        if (_handle != 0 && !AssignProcessToJobObject(_handle, process))
+        {
+            throw new Win32Exception(Marshal.GetLastWin32Error());
+        }
+    }
+
+    /// <summary>Ends every process in the job now.</summary>
+    public void Terminate(uint exitCode = 1)
+    {
+        if (_handle != 0)
+        {
+            TerminateJobObject(_handle, exitCode);
+        }
+    }
+
     public void Dispose()
     {
         if (_handle != 0)
@@ -124,4 +142,8 @@ public sealed partial class JobObject : IDisposable
     [LibraryImport("kernel32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static partial bool CloseHandle(nint handle);
+
+    [LibraryImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool TerminateJobObject(nint job, uint exitCode);
 }

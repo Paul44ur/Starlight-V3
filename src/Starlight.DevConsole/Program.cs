@@ -5,6 +5,8 @@ using Starlight.Memory;
 using Starlight.Security;
 using Starlight.Tools.Web;
 using Starlight.Tools.Network;
+using Starlight.Tools.Code;
+using Starlight.Skills;
 using Starlight.Agent;
 using Starlight.Events;
 using Starlight.Model;
@@ -39,8 +41,13 @@ using var tracking = memory.TrackTurns(core.Events);
 var secrets = new CredentialManagerStore();
 await using var web = WebTools.Create(paths, core.Settings, secrets, new ConsolePrompt());
 using var probe = new NetProbe();
+var skillStore = new SkillStore(core.Db);
+using var skillRecorder = new SkillRecorder(skillStore, core.Events);
+var skillTools = new SkillTools(skillStore) { Caller = core.Dispatcher };
 core.AddTools(new PcTools(), new AppTools(new AppCatalog()), memory, web,
     new NetworkTools(core.Settings, probe, new SshRunner(secrets, Path.Combine(paths.DataRoot, "ssh-known-hosts.json"))),
+    new CodeTools(new AppContainerSandbox(Path.Combine(paths.RuntimeDir, "python"), Path.Combine(paths.DataRoot, "sandbox")), paths.DataRoot),
+    skillTools,
     new DesktopTools(new UiSnapshot(), core.Events, () => !string.IsNullOrWhiteSpace(core.Settings.Current.Model.VisionProjectorFile)));
 core.KillSwitch.RegisterCleanup("input", Input.ReleaseAll);
 if (argv.Contains("--dev-tools"))
@@ -48,7 +55,7 @@ if (argv.Contains("--dev-tools"))
     core.AddTools(new DevTools());
 }
 await using var host = new ModelHost(core.Settings, core.Events, paths, Opt("--server"));
-var agent = core.CreateAgent(() => host.ChatClient, contributors: [memory]);
+var agent = core.CreateAgent(() => host.ChatClient, contributors: [memory, skillTools]);
 
 using var hotkeys = new GlobalHotkeys([(core.Settings.Current.General.KillHotkey, () => core.KillSwitch.Engage("hotkey"))]);
 var killedAt = Stopwatch.StartNew();

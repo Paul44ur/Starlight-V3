@@ -39,3 +39,6 @@ public enum NoticeLevel { Info, Warning, Error }
 
 /// <summary>Model server status for the tray and the chat window.</summary>
 public sealed record ModelStatus(string Status, string? Detail = null) : StarlightEvent;
+
+/// <summary>Starlight offers to save the steps of a turn as a skill; the chat window asks the user.</summary>
+public sealed record SkillOffered(long DraftId, string ConversationId, string Name) : StarlightEvent;

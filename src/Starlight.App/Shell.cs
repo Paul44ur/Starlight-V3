@@ -8,6 +8,8 @@ using Starlight.Memory;
 using Starlight.Security;
 using Starlight.Tools.Web;
 using Starlight.Tools.Network;
+using Starlight.Tools.Code;
+using Starlight.Skills;
 using Starlight.Events;
 using Starlight.Model;
 using Starlight.Tools.Desktop;
@@ -44,6 +46,8 @@ internal sealed class Shell : IDisposable
     private readonly CodePrompt _codePrompt;
     private readonly WebTools _web;
     private readonly NetProbe _probe;
+    private readonly SkillStore _skillStore;
+    private readonly SkillRecorder _skillRecorder;
     private readonly ServerWatcher _watcher;
     private readonly MemoryTools _memory;
 
@@ -59,15 +63,19 @@ internal sealed class Shell : IDisposable
         _probe = new NetProbe();
         _watcher = new ServerWatcher(_core.Settings, _probe, _core.Events);
         var network = new NetworkTools(_core.Settings, _probe, new SshRunner(_secrets, Path.Combine(paths.DataRoot, "ssh-known-hosts.json")));
+        _skillStore = new SkillStore(_core.Db);
+        _skillRecorder = new SkillRecorder(_skillStore, _core.Events);
+        var skills = new SkillTools(_skillStore) { Caller = _core.Dispatcher };
+        var code = new CodeTools(new AppContainerSandbox(Path.Combine(paths.RuntimeDir, "python"), Path.Combine(paths.DataRoot, "sandbox")), paths.DataRoot);
         _memoryStore = new MemoryStore(_core.Db);
         _memory = new MemoryTools(_memoryStore);
         _memory.TrackTurns(_core.Events);
-        _core.AddTools(new PcTools(), new AppTools(new AppCatalog()), _memory, _web, network,
+        _core.AddTools(new PcTools(), new AppTools(new AppCatalog()), _memory, _web, network, code, skills,
             new DesktopTools(new UiSnapshot(), _core.Events, () => !string.IsNullOrWhiteSpace(_core.Settings.Current.Model.VisionProjectorFile)));
         _core.KillSwitch.RegisterCleanup("input", Input.ReleaseAll);
         _core.KillSwitch.RegisterCleanup("pointer", () => _core.Events.Publish(new ClearPointer()));
         _model = new ModelHost(_core.Settings, _core.Events, paths);
-        _core.CreateAgent(() => _model.ChatClient, contributors: [_memory]);
+        _core.CreateAgent(() => _model.ChatClient, contributors: [_memory, skills]);
         _core.KillSwitch.RegisterCleanup("speech", () => _speaker?.Stop());
 
         _overlay = new OverlayManager(_core.Events, _core.Settings, BuildOrbMenu());
@@ -265,7 +273,7 @@ internal sealed class Shell : IDisposable
     {
         if (_chat is null)
         {
-            _chat = new ChatWindow(_core, _memoryStore, ShowSettings);
+            _chat = new ChatWindow(_core, _memoryStore, _skillStore, ShowSettings);
             _chat.Closed += (_, _) => _chat = null;
         }
         _chat.Show();
@@ -331,6 +339,7 @@ internal sealed class Shell : IDisposable
         _recognizer?.Dispose();
         _mic?.Dispose();
         _watcher.Dispose();
+        _skillRecorder.Dispose();
         _probe.Dispose();
         _web.DisposeAsync().AsTask().Wait(TimeSpan.FromSeconds(3));
         _model.DisposeAsync().AsTask().Wait(TimeSpan.FromSeconds(5));

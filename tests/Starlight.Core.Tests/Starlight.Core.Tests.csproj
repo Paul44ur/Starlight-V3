@@ -17,6 +17,8 @@
     <ProjectReference Include="..\..\src\Starlight.Memory\Starlight.Memory.csproj" />
     <ProjectReference Include="..\..\src\Starlight.Tools.Web\Starlight.Tools.Web.csproj" />
     <ProjectReference Include="..\..\src\Starlight.Tools.Network\Starlight.Tools.Network.csproj" />
+    <ProjectReference Include="..\..\src\Starlight.Tools.Code\Starlight.Tools.Code.csproj" />
+    <ProjectReference Include="..\..\src\Starlight.Skills\Starlight.Skills.csproj" />
   </ItemGroup>
   <ItemGroup>
     <Compile Include="..\..\src\Starlight.Tools.Desktop\AppMatcher.cs" Link="Linked\AppMatcher.cs" />

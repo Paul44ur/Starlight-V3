@@ -10,6 +10,7 @@ using Microsoft.Win32;
 using Starlight.Agent;
 using Starlight.Events;
 using Starlight.Memory;
+using Starlight.Skills;
 using Starlight.Storage;
 using Wpf.Ui.Controls;
 using Button = Wpf.Ui.Controls.Button;
@@ -30,6 +31,7 @@ internal sealed class ChatWindow : FluentWindow
 
     private readonly AssistantCore _core;
     private readonly MemoryStore _memory;
+    private readonly SkillStore _skills;
     private readonly Action _openSettings;
     private readonly System.Windows.Controls.ListBox _list = new() { BorderThickness = new Thickness(0), Background = Brushes.Transparent };
     private readonly TextBox _search = new() { PlaceholderText = "Search conversations", Margin = new Thickness(0, 8, 0, 8) };
@@ -46,10 +48,11 @@ internal sealed class ChatWindow : FluentWindow
     private string? _liveTurn;
     private TextBlock? _liveAnswer;
 
-    public ChatWindow(AssistantCore core, MemoryStore memory, Action openSettings)
+    public ChatWindow(AssistantCore core, MemoryStore memory, SkillStore skills, Action openSettings)
     {
         _core = core;
         _memory = memory;
+        _skills = skills;
         _openSettings = openSettings;
         Title = "Starlight";
         Width = 1040;
@@ -110,6 +113,13 @@ internal sealed class ChatWindow : FluentWindow
         _subs.Add(core.Events.Subscribe<AnswerDelta>(e => Dispatcher.BeginInvoke(() => OnDelta(e))));
         _subs.Add(core.Events.Subscribe<ToolStarted>(e => Dispatcher.BeginInvoke(() => OnTool(e))));
         _subs.Add(core.Events.Subscribe<AnswerCompleted>(e => Dispatcher.BeginInvoke(() => OnCompleted(e))));
+        _subs.Add(core.Events.Subscribe<SkillOffered>(e => Dispatcher.BeginInvoke(() =>
+        {
+            if (_conversation?.Id == e.ConversationId && _liveTurn is null && _view.Content == _chatView)
+            {
+                Render();
+            }
+        })));
         Closed += (_, _) => _subs.ForEach(s => s.Dispose());
 
         RefreshList();
@@ -286,11 +296,50 @@ internal sealed class ChatWindow : FluentWindow
                 }
             }
         }
+        foreach (var draft in _skills.Drafts(_conversation.Id))
+        {
+            AddSkillOffer(draft);
+        }
         if (_messages.Children.Count == 0)
         {
             _messages.Children.Add(new TextBlock { Text = "Ask anything, or tell Starlight what to do on this PC.", Foreground = Subtle, Margin = new Thickness(4, 24, 0, 0), FontSize = 15 });
         }
         ScrollToEnd();
+    }
+
+    /// <summary>The offer to keep a turn's steps as a skill. Saved only when the user presses Save (plan 5.10).</summary>
+    private void AddSkillOffer(SkillDraft draft)
+    {
+        var panel = new StackPanel();
+        panel.Children.Add(new TextBlock { Text = "Save these steps as a skill?", Foreground = Fg, FontWeight = FontWeights.SemiBold });
+        panel.Children.Add(new TextBlock { Text = "Then Starlight can do this again by name.", Foreground = Subtle, FontSize = 12, Margin = new Thickness(0, 0, 0, 6) });
+        foreach (var (step, i) in draft.Steps.Select((st, i) => (st, i)))
+        {
+            panel.Children.Add(new TextBlock { Text = $"{i + 1}. {step.Tool}  {Short(step.ArgumentsJson, 120)}", Foreground = Fg, FontFamily = new FontFamily("Cascadia Mono, Consolas"), FontSize = 12, TextWrapping = TextWrapping.Wrap });
+        }
+        if (draft.Parameters.Count > 0)
+        {
+            panel.Children.Add(new TextBlock { Text = "Asks each time for: " + string.Join(", ", draft.Parameters), Foreground = Subtle, FontSize = 12, Margin = new Thickness(0, 4, 0, 0) });
+        }
+        var name = new TextBox { Text = Starlight.Skills.SkillRecorder.SuggestNameFor(draft.Request), Width = 280, Margin = new Thickness(0, 8, 8, 0) };
+        var save = new Button { Content = "Save skill", Appearance = ControlAppearance.Primary, Margin = new Thickness(0, 8, 8, 0) };
+        var dismiss = new Button { Content = "Not now", Margin = new Thickness(0, 8, 0, 0) };
+        save.Click += (_, _) =>
+        {
+            if (SkillStore.SkillName(name.Text).Length == 0)
+            {
+                return;
+            }
+            _skills.Approve(draft.Id, name.Text);
+            Render();
+        };
+        dismiss.Click += (_, _) => { _skills.DropDraft(draft.Id); Render(); };
+        var row = new WrapPanel();
+        row.Children.Add(name);
+        row.Children.Add(save);
+        row.Children.Add(dismiss);
+        panel.Children.Add(row);
+        _messages.Children.Add(new Border { Background = CardBg, CornerRadius = new CornerRadius(10), Padding = new Thickness(12), Margin = new Thickness(0, 6, 80, 6), Child = panel });
     }
 
     private void AddUser(string text) => _messages.Children.Add(new Border
@@ -510,13 +559,41 @@ internal sealed class ChatWindow : FluentWindow
         }
         search.TextChanged += (_, _) => Fill();
         Fill();
+        var skillList = new StackPanel();
+        void FillSkills()
+        {
+            skillList.Children.Clear();
+            skillList.Children.Add(new TextBlock { Text = "Skills", Foreground = Fg, FontSize = 16, FontWeight = FontWeights.SemiBold, Margin = new Thickness(0, 16, 0, 6) });
+            var skills = _skills.All();
+            if (skills.Count == 0)
+            {
+                skillList.Children.Add(new TextBlock { Text = "No skills yet. After a task with several steps, Starlight offers to save it here.", Foreground = Subtle, TextWrapping = TextWrapping.Wrap });
+            }
+            foreach (var sk in skills)
+            {
+                var row = new DockPanel();
+                var delete = new Button { Icon = new SymbolIcon(SymbolRegular.Delete24), ToolTip = "Delete this skill", Appearance = ControlAppearance.Transparent, VerticalAlignment = VerticalAlignment.Center };
+                delete.Click += (_, _) => { _skills.Delete(sk.Name); FillSkills(); };
+                DockPanel.SetDock(delete, Dock.Right);
+                row.Children.Add(delete);
+                var text = new StackPanel();
+                text.Children.Add(new TextBlock { Text = $"{sk.Name}({string.Join(", ", sk.Parameters)})", Foreground = Fg });
+                text.Children.Add(new TextBlock { Text = $"{sk.Steps.Count} steps: {string.Join(", ", sk.Steps.Select(st => st.Tool))} · first made for \"{Short(sk.Description, 80)}\"", Foreground = Subtle, FontSize = 12, TextWrapping = TextWrapping.Wrap });
+                row.Children.Add(text);
+                skillList.Children.Add(new Border { Background = CardBg, CornerRadius = new CornerRadius(8), Padding = new Thickness(12, 8, 8, 8), Margin = new Thickness(0, 0, 0, 6), Child = row });
+            }
+        }
+        FillSkills();
+        var both = new StackPanel();
+        both.Children.Add(list);
+        both.Children.Add(skillList);
         var panel = new DockPanel();
         var head = new StackPanel();
-        head.Children.Add(new TextBlock { Text = "What Starlight remembers about you. Delete anything you don't want kept.", Foreground = Subtle, Margin = new Thickness(0, 0, 0, 8), TextWrapping = TextWrapping.Wrap });
+        head.Children.Add(new TextBlock { Text = "What Starlight remembers about you, and the skills you saved. Delete anything you don't want kept.", Foreground = Subtle, Margin = new Thickness(0, 0, 0, 8), TextWrapping = TextWrapping.Wrap });
         head.Children.Add(search);
         DockPanel.SetDock(head, Dock.Top);
         panel.Children.Add(head);
-        panel.Children.Add(new ScrollViewer { Content = list, VerticalScrollBarVisibility = ScrollBarVisibility.Auto });
+        panel.Children.Add(new ScrollViewer { Content = both, VerticalScrollBarVisibility = ScrollBarVisibility.Auto });
         return panel;
     }
 
