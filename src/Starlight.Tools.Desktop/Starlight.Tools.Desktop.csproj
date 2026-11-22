@@ -6,6 +6,10 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
   <ItemGroup>
+    <PackageReference Include="FlaUI.UIA3" />
+    <PackageReference Include="System.Drawing.Common" />
+  </ItemGroup>
+  <ItemGroup>
     <ProjectReference Include="..\Starlight.Core\Starlight.Core.csproj" />
   </ItemGroup>
 </Project>

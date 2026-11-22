@@ -35,8 +35,14 @@ public interface IToolCaller
     Task<ToolResult> CallAsync(string tool, IDictionary<string, object?> arguments, CancellationToken ct);
 }
 
+/// <summary>What a tool returns when it has more than text: images (a screenshot) go to the model as a picture.</summary>
+public sealed record ToolOutput(string Text, IReadOnlyList<Microsoft.Extensions.AI.DataContent> Images);
+
 public sealed record ToolResult(bool Ok, string Text)
 {
+    /// <summary>Pictures for the model (only with a vision model).</summary>
+    public IReadOnlyList<Microsoft.Extensions.AI.DataContent> Images { get; init; } = [];
+
     public static ToolResult Success(string text) => new(true, text);
     public static ToolResult Fail(string text) => new(false, text);
 }

@@ -110,7 +110,7 @@ public sealed class ToolDispatcher(
         try
         {
             var value = await tool.Function.InvokeAsync(new AIFunctionArguments(arguments), linked.Token);
-            result = ToolResult.Success(Shorten(ToText(value)));
+            result = ToolResult.Success(Shorten(ToText(value))) with { Images = value is ToolOutput o ? o.Images : [] };
         }
         catch (OperationCanceledException) when (killSwitch.IsEngaged)
         {
@@ -176,6 +176,7 @@ public sealed class ToolDispatcher(
         JsonElement { ValueKind: JsonValueKind.String } e => e.GetString() ?? "",
         JsonElement e => e.GetRawText(),
         ToolResult r => r.Text,
+        ToolOutput o => o.Text,
         _ => JsonSerializer.Serialize(value),
     };
 

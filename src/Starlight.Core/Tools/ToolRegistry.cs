@@ -36,6 +36,8 @@ public sealed class ToolRegistry
             {
                 Name = attr.Name,
                 Description = description,
+                // Keep the method's own return value (string, ToolOutput…); the dispatcher turns it into text.
+                MarshalResult = static (value, _, _) => new ValueTask<object?>(value),
             });
             _tools[attr.Name] = new ToolDefinition(attr.Name, description, attr.Permission,
                 TimeSpan.FromSeconds(attr.TimeoutSeconds), function, group,

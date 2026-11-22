@@ -76,6 +76,20 @@ public sealed class AgentLoopTests
     }
 
     [Fact]
+    public async Task Pictures_from_tools_reach_the_model_once_and_are_not_kept()
+    {
+        using var env = new TestEnv();
+        env.Registry.Add(new SampleTools());
+        var client = new ScriptedChatClient(
+            _ => ScriptedChatClient.Call("look", []),
+            _ => ScriptedChatClient.Text("I see a window."));
+        var conversation = new Conversation();
+        await Loop(env, client).RunAsync(conversation, "what's on screen", "voice");
+        Assert.Contains(client.Sent[1], m => m.Contents.OfType<DataContent>().Any());
+        Assert.DoesNotContain(conversation.Messages, m => m.Contents.OfType<DataContent>().Any());
+    }
+
+    [Fact]
     public async Task Stops_after_max_steps()
     {
         using var env = new TestEnv();

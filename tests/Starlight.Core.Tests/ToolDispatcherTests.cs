@@ -34,6 +34,9 @@ public sealed class SampleTools : IToolProvider
     [Tool("thing", AskForActions = ["close"]), Description("Opens or closes a thing.")]
     public string Thing([Description("open or close")] string action) => action + " done";
 
+    [Tool("look"), Description("Returns a picture.")]
+    public ToolOutput Look() => new("A screenshot.", [new Microsoft.Extensions.AI.DataContent(new byte[] { 1, 2, 3 }, "image/png")]);
+
     [Tool("big"), Description("Returns a lot of text.")]
     public string Big() => new('x', ToolDispatcher.MaxResultChars + 100);
 }

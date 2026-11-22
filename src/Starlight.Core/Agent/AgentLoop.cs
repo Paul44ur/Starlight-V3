@@ -122,6 +122,13 @@ public sealed class AgentLoop(
                     trace.Write("model.call", turnId, new { tool = call.Name, args = call.Arguments });
                     var result = await dispatcher.InvokeAsync(call.Name, call.Arguments, turnId, source, cts.Token);
                     conversation.Messages.Add(new ChatMessage(ChatRole.Tool, [new FunctionResultContent(call.CallId, result.Ok ? result.Text : "ERROR: " + result.Text)]));
+                    if (result.Images.Count > 0)
+                    {
+                        // Tool messages carry text only; the picture follows as a user message.
+                        var picture = new List<AIContent> { new TextContent($"(Picture from {call.Name}.)") };
+                        picture.AddRange(result.Images);
+                        conversation.Messages.Add(new ChatMessage(ChatRole.User, picture));
+                    }
                     events.Publish(new StateChanged(AssistantState.Thinking));
                 }
                 if (step == maxSteps - 1)
@@ -130,6 +137,7 @@ public sealed class AgentLoop(
                 }
             }
 
+            DropPictures(conversation);
             var text = answer.ToString().Trim();
             if (text.Length == 0)
             {
@@ -236,6 +244,19 @@ public sealed class AgentLoop(
         conversation.Messages.Insert(1, new ChatMessage(ChatRole.Assistant, "Understood."));
         trace.Write("context.compacted", turnId, new { removed = keepFrom });
         Log.Information("Compacted conversation {Id}: {Removed} messages summarized", conversation.Id, keepFrom);
+    }
+
+    /// <summary>Screenshots are only useful in the turn that took them; afterwards they would fill the context and the database.</summary>
+    internal static void DropPictures(Conversation conversation)
+    {
+        for (var i = 0; i < conversation.Messages.Count; i++)
+        {
+            var m = conversation.Messages[i];
+            if (m.Contents.Any(c => c is DataContent d && d.HasTopLevelMediaType("image")) && m.Role == ChatRole.User && m.Text.StartsWith("(Picture from", StringComparison.Ordinal))
+            {
+                conversation.Messages[i] = new ChatMessage(ChatRole.User, m.Text + " (picture no longer kept)");
+            }
+        }
     }
 
     private static string Clip(string? s, int max) => s is null ? "" : s.Length <= max ? s : s[..max] + "…";

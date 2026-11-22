@@ -18,6 +18,8 @@
   <ItemGroup>
     <Compile Include="..\..\src\Starlight.Tools.Desktop\AppMatcher.cs" Link="Linked\AppMatcher.cs" />
     <Compile Include="..\..\src\Starlight.Tools.Desktop\HotkeyParser.cs" Link="Linked\HotkeyParser.cs" />
+    <Compile Include="..\..\src\Starlight.Tools.Desktop\TargetParser.cs" Link="Linked\TargetParser.cs" />
+    <Compile Include="..\..\src\Starlight.Tools.Desktop\KeyNames.cs" Link="Linked\KeyNames.cs" />
     <Compile Include="..\..\src\Starlight.Eval\EvalCase.cs" Link="Linked\EvalCase.cs" />
     <Compile Include="..\..\src\Starlight.Voice\SpeechText.cs" Link="Linked\SpeechText.cs" />
     <Compile Include="..\..\src\Starlight.Voice\AudioMath.cs" Link="Linked\AudioMath.cs" />

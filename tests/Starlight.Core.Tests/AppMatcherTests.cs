@@ -51,3 +51,42 @@ public sealed class HotkeyParserTests
     [InlineData("Ctrl+Banana")]
     public void Rejects_bad_hotkeys(string text) => Assert.Throws<FormatException>(() => HotkeyParser.Parse(text));
 }
+
+public sealed class TargetParserTests
+{
+    [Theory]
+    [InlineData("7", 7)]
+    [InlineData("[12]", 12)]
+    [InlineData("element 3", 3)]
+    [InlineData("#5", 5)]
+    public void Element_numbers(string text, int n) => Assert.Equal(n, TargetParser.Parse(text).Element);
+
+    [Fact]
+    public void Points_and_names()
+    {
+        Assert.Equal((100, -20), TargetParser.Parse("100, -20").Point);
+        Assert.Equal((5, 6), TargetParser.Parse("(5,6)").Point);
+        Assert.Equal("Save as", TargetParser.Parse("\"Save as\"").Name);
+    }
+
+    [Fact]
+    public void Name_matching_prefers_exact()
+    {
+        Assert.Equal(3, TargetParser.Match("save", "Save"));
+        Assert.Equal(2, TargetParser.Match("save", "Save as…"));
+        Assert.Equal(1, TargetParser.Match("settings app", "Open the Settings app now"));
+        Assert.Equal(0, TargetParser.Match("print", "Save"));
+    }
+}
+
+public sealed class KeyNamesTests
+{
+    [Fact]
+    public void Names_and_letters_map_to_codes()
+    {
+        Assert.Equal(0x11, KeyNames.Code("Ctrl"));
+        Assert.Equal('S', KeyNames.Code("s"));
+        Assert.Equal(0x74, KeyNames.Code("F5"));
+        Assert.Throws<Starlight.Tools.ToolException>(() => KeyNames.Code("banana"));
+    }
+}

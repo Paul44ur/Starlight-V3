@@ -40,7 +40,10 @@ internal sealed class Shell : IDisposable
         var paths = StarlightPaths.Default();
         var approvals = new SwitchableApprovals();
         _core = AssistantCore.Start(paths, approvals);
-        _core.AddTools(new PcTools(), new AppTools(new AppCatalog()));
+        _core.AddTools(new PcTools(), new AppTools(new AppCatalog()),
+            new DesktopTools(new UiSnapshot(), _core.Events, () => !string.IsNullOrWhiteSpace(_core.Settings.Current.Model.VisionProjectorFile)));
+        _core.KillSwitch.RegisterCleanup("input", Input.ReleaseAll);
+        _core.KillSwitch.RegisterCleanup("pointer", () => _core.Events.Publish(new ClearPointer()));
         _model = new ModelHost(_core.Settings, _core.Events, paths);
         _core.CreateAgent(() => _model.ChatClient);
         _core.KillSwitch.RegisterCleanup("speech", () => _speaker?.Stop());

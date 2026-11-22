@@ -30,7 +30,9 @@ if (Opt("--model") is { } model)
     });
 }
 
-core.AddTools(new PcTools(), new AppTools(new AppCatalog()));
+core.AddTools(new PcTools(), new AppTools(new AppCatalog()),
+    new DesktopTools(new UiSnapshot(), core.Events, () => !string.IsNullOrWhiteSpace(core.Settings.Current.Model.VisionProjectorFile)));
+core.KillSwitch.RegisterCleanup("input", Input.ReleaseAll);
 if (argv.Contains("--dev-tools"))
 {
     core.AddTools(new DevTools());

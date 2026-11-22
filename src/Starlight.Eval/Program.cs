@@ -33,7 +33,7 @@ var cases = Directory.GetFiles(casesDir, "*.json").SelectMany(EvalCase.Load).ToL
 var data = Path.Combine(Path.GetTempPath(), "starlight-eval-" + Guid.NewGuid().ToString("N")[..8]);
 var paths = new StarlightPaths(data, AppContext.BaseDirectory);
 using var core = AssistantCore.Start(paths, new DenyAllApprovals(), installCrashHandler: false);
-core.AddTools(new PcTools(), new AppTools(new AppCatalog()));
+core.AddTools(new PcTools(), new AppTools(new AppCatalog()), new DesktopTools(new UiSnapshot(), core.Events, () => false));
 var declarations = core.Tools.Declarations();
 var known = core.Tools.All.Select(t => t.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
 var runnable = cases.Where(c => c.Expect != "tool" || c.Tools.Any(known.Contains)).ToList();

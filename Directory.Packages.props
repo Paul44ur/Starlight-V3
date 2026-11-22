@@ -12,6 +12,7 @@
     <PackageVersion Include="Serilog.Formatting.Compact" Version="3.0.0" />
     <PackageVersion Include="xunit.v3" Version="4.0.3" />
     <PackageVersion Include="FlaUI.UIA3" Version="5.0.0" />
+    <PackageVersion Include="System.Drawing.Common" Version="10.0.15" />
     <PackageVersion Include="Whisper.net" Version="1.9.1" />
     <PackageVersion Include="Whisper.net.Runtime" Version="1.9.1" />
     <PackageVersion Include="Whisper.net.Runtime.Vulkan" Version="1.9.1" />
