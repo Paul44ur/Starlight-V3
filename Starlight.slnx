@@ -1,0 +1,10 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Starlight.Core/Starlight.Core.csproj" />
+    <Project Path="src/Starlight.Model/Starlight.Model.csproj" />
+    <Project Path="src/Starlight.App/Starlight.App.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Starlight.Core.Tests/Starlight.Core.Tests.csproj" />
+  </Folder>
+</Solution>
