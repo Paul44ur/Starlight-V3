@@ -25,6 +25,7 @@
     <ProjectReference Include="..\Starlight.Tools.Pc\Starlight.Tools.Pc.csproj" />
     <ProjectReference Include="..\Starlight.Memory\Starlight.Memory.csproj" />
     <ProjectReference Include="..\Starlight.Tools.Web\Starlight.Tools.Web.csproj" />
+    <ProjectReference Include="..\Starlight.Tools.Network\Starlight.Tools.Network.csproj" />
     <ProjectReference Include="..\Starlight.Tools.Desktop\Starlight.Tools.Desktop.csproj" />
     <ProjectReference Include="..\Starlight.Voice\Starlight.Voice.csproj" />
     <ProjectReference Include="..\Starlight.Overlay\Starlight.Overlay.csproj" />

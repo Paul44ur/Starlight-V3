@@ -40,6 +40,13 @@ public interface IToolProvider
 {
 }
 
+/// <summary>A provider whose tools ask only for some arguments (server_ssh asks for commands outside the allow-list).
+/// The dispatcher calls it before the approval step; null keeps the tool's own permission.</summary>
+public interface IPermissionHint
+{
+    Permission? PermissionFor(string tool, IDictionary<string, object?> arguments);
+}
+
 /// <summary>Lets a tool call another tool through the dispatcher (so permissions and the audit still apply).</summary>
 public interface IToolCaller
 {

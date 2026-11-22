@@ -9,6 +9,7 @@ public sealed record ToolDefinition(string Name, string Description, Permission 
     public bool UntrustedOutput { get; init; }
     public bool AskAfterUntrusted { get; init; }
     public int MaxResultChars { get; init; } = 6000;
+    public IPermissionHint? Hint { get; init; }
 }
 
 /// <summary>Collects the tools of all providers. The JSON schema for each comes from the method's parameters.</summary>
@@ -50,6 +51,7 @@ public sealed class ToolRegistry
             {
                 UntrustedOutput = attr.UntrustedOutput,
                 AskAfterUntrusted = attr.AskAfterUntrusted,
+                Hint = provider as IPermissionHint,
                 MaxResultChars = attr.MaxResultChars,
             };
         }

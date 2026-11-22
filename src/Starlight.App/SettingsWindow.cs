@@ -50,6 +50,7 @@ internal sealed class SettingsWindow : FluentWindow
         tabs.Items.Add(Tab("Voice", VoiceSection()));
         tabs.Items.Add(Tab("Model", ModelSection()));
         tabs.Items.Add(Tab("Web", WebSection()));
+        tabs.Items.Add(Tab("Servers", ServersSection()));
         tabs.Items.Add(Tab("Permissions", Permissions()));
         tabs.Items.Add(Tab("Diagnostics", Diagnostics(export, report)));
 
@@ -318,6 +319,148 @@ internal sealed class SettingsWindow : FluentWindow
         return p;
     }
 
+    private UIElement ServersSection()
+    {
+        var p = Section("Servers", "Your own servers. Starlight checks them, runs allowed commands over SSH, and can watch them. SSH passwords go to Windows Credential Manager.");
+        var list = new StackPanel { Margin = new Thickness(0, 8, 0, 8) };
+        var name = new TextBox { PlaceholderText = "Name, for example nas", Width = 320, HorizontalAlignment = HorizontalAlignment.Left };
+        var host = new TextBox { PlaceholderText = "Host name or address", Width = 320, HorizontalAlignment = HorizontalAlignment.Left };
+        var user = new TextBox { PlaceholderText = "SSH user (empty: no SSH)", Width = 320, HorizontalAlignment = HorizontalAlignment.Left };
+        var port = new TextBox { Text = "22", Width = 120, HorizontalAlignment = HorizontalAlignment.Left };
+        var keyFile = new TextBox { PlaceholderText = "Private key file (optional)", Width = 320, HorizontalAlignment = HorizontalAlignment.Left };
+        var browseKey = new Button { Content = "Browse…", Margin = new Thickness(8, 0, 0, 0) };
+        browseKey.Click += (_, _) =>
+        {
+            var dialog = new OpenFileDialog { Title = "SSH private key" };
+            if (dialog.ShowDialog(this) == true)
+            {
+                keyFile.Text = dialog.FileName;
+            }
+        };
+        var password = new PasswordBox { Width = 320, HorizontalAlignment = HorizontalAlignment.Left };
+        var allowed = new TextBox { AcceptsReturn = true, MinLines = 4, Width = 320, HorizontalAlignment = HorizontalAlignment.Left, Text = string.Join('\n', new ServerEntry().AllowedCommands) };
+        var watchPorts = new TextBox { PlaceholderText = "Ports to watch, for example 22, 443", Width = 320, HorizontalAlignment = HorizontalAlignment.Left };
+        var health = new TextBox { PlaceholderText = "Health address, for example https://nas.home/health", Width = 320, HorizontalAlignment = HorizontalAlignment.Left };
+        var minutes = new TextBox { Text = "0", Width = 120, HorizontalAlignment = HorizontalAlignment.Left };
+        var problem = new TextBlock { Foreground = System.Windows.Media.Brushes.IndianRed, TextWrapping = TextWrapping.Wrap };
+
+        void Load(ServerEntry s)
+        {
+            name.Text = s.Name;
+            host.Text = s.Host;
+            user.Text = s.SshUser;
+            port.Text = s.SshPort.ToString(CultureInfo.InvariantCulture);
+            keyFile.Text = s.SshKeyFile;
+            password.Clear();
+            allowed.Text = string.Join('\n', s.AllowedCommands);
+            watchPorts.Text = string.Join(", ", s.WatchPorts);
+            health.Text = s.HealthUrl;
+            minutes.Text = s.WatchMinutes.ToString(CultureInfo.InvariantCulture);
+        }
+
+        void Fill()
+        {
+            list.Children.Clear();
+            foreach (var server in _draft.Servers.ToList())
+            {
+                var row = new DockPanel { Margin = new Thickness(0, 0, 0, 4) };
+                var buttons = new StackPanel { Orientation = Orientation.Horizontal };
+                var edit = new Button { Content = "Edit", Margin = new Thickness(0, 0, 4, 0) };
+                edit.Click += (_, _) => Load(server);
+                var remove = new Button { Content = "Remove" };
+                remove.Click += (_, _) =>
+                {
+                    _secrets.Delete(Starlight.Tools.Network.SshRunner.SecretKey(server));
+                    _draft.Servers.Remove(server);
+                    Fill();
+                };
+                buttons.Children.Add(edit);
+                buttons.Children.Add(remove);
+                DockPanel.SetDock(buttons, Dock.Right);
+                row.Children.Add(buttons);
+                var watch = server.WatchMinutes > 0 ? $"  ·  watched every {server.WatchMinutes} min" : "";
+                var sshText = server.SshUser.Length > 0 ? $"  ·  SSH {server.SshUser}" : "";
+                row.Children.Add(new TextBlock { Text = server.Display + sshText + watch, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis });
+                list.Children.Add(row);
+            }
+            if (_draft.Servers.Count == 0)
+            {
+                list.Children.Add(new TextBlock { Text = "None yet.", Opacity = 0.6 });
+            }
+        }
+
+        var add = new Button { Content = "Add or update server", Margin = new Thickness(0, 8, 0, 0) };
+        add.Click += (_, _) =>
+        {
+            problem.Text = "";
+            if (host.Text.Trim().Length == 0 || host.Text.Trim().Any(char.IsWhiteSpace))
+            {
+                problem.Text = "Give the host name or address.";
+                return;
+            }
+            if (!int.TryParse(port.Text, NumberStyles.Integer, CultureInfo.InvariantCulture, out var sshPort) || sshPort is < 1 or > 65535)
+            {
+                problem.Text = "The SSH port must be a number from 1 to 65535.";
+                return;
+            }
+            var ports = new List<int>();
+            foreach (var part in watchPorts.Text.Split([',', ' ', ';'], StringSplitOptions.RemoveEmptyEntries))
+            {
+                if (!int.TryParse(part, NumberStyles.Integer, CultureInfo.InvariantCulture, out var wp) || wp is < 1 or > 65535)
+                {
+                    problem.Text = $"\"{part}\" is not a port number.";
+                    return;
+                }
+                ports.Add(wp);
+            }
+            if (health.Text.Trim().Length > 0 && !Uri.TryCreate(health.Text.Trim(), UriKind.Absolute, out _))
+            {
+                problem.Text = "The health address must be a full address such as https://nas.home/health.";
+                return;
+            }
+            _ = int.TryParse(minutes.Text, NumberStyles.Integer, CultureInfo.InvariantCulture, out var every);
+            var server = new ServerEntry
+            {
+                Name = name.Text.Trim(),
+                Host = host.Text.Trim(),
+                SshUser = user.Text.Trim(),
+                SshPort = sshPort,
+                SshKeyFile = keyFile.Text.Trim(),
+                AllowedCommands = allowed.Text.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToList(),
+                WatchPorts = ports,
+                HealthUrl = health.Text.Trim(),
+                WatchMinutes = Math.Clamp(every, 0, 1440),
+            };
+            if (password.Password.Length > 0)
+            {
+                _secrets.Set(Starlight.Tools.Network.SshRunner.SecretKey(server), server.SshUser, password.Password);
+            }
+            _draft.Servers.RemoveAll(s => s.Host.Equals(server.Host, StringComparison.OrdinalIgnoreCase));
+            _draft.Servers.Add(server);
+            Load(new ServerEntry());
+            Fill();
+        };
+
+        p.Children.Add(list);
+        Row(p, "Name", name);
+        Row(p, "Host", host);
+        Row(p, "SSH user", user);
+        Row(p, "SSH port", port);
+        var keyRow = new StackPanel { Orientation = Orientation.Horizontal };
+        keyRow.Children.Add(keyFile);
+        keyRow.Children.Add(browseKey);
+        Row(p, "SSH key file", keyRow, "Starlight uses the key file if set, else the password.");
+        Row(p, "SSH password", password, "Leave empty to keep the stored one.");
+        Row(p, "Commands that run without asking", allowed, "One per line. * stands for any text. Anything else asks first, and commands with ; | & $ or redirects always ask.");
+        Row(p, "Watch: ports", watchPorts);
+        Row(p, "Watch: health address", health);
+        Row(p, "Watch every (minutes)", minutes, "0 turns watching off. Starlight tells you when the server goes down or comes back.");
+        p.Children.Add(add);
+        p.Children.Add(problem);
+        Fill();
+        return p;
+    }
+
     private void FillModelLists()
     {
         var m = _draft.Model;
@@ -393,6 +536,7 @@ internal sealed class SettingsWindow : FluentWindow
             s.Voice = _draft.Voice;
             s.Model = _draft.Model;
             s.Web = _draft.Web;
+            s.Servers = _draft.Servers;
             s.PermissionOverrides = _draft.PermissionOverrides;
         });
         try

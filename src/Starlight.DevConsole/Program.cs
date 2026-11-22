@@ -4,6 +4,7 @@ using Starlight;
 using Starlight.Memory;
 using Starlight.Security;
 using Starlight.Tools.Web;
+using Starlight.Tools.Network;
 using Starlight.Agent;
 using Starlight.Events;
 using Starlight.Model;
@@ -35,8 +36,11 @@ if (Opt("--model") is { } model)
 
 var memory = new MemoryTools(new MemoryStore(core.Db));
 using var tracking = memory.TrackTurns(core.Events);
-await using var web = WebTools.Create(paths, core.Settings, new CredentialManagerStore(), new ConsolePrompt());
+var secrets = new CredentialManagerStore();
+await using var web = WebTools.Create(paths, core.Settings, secrets, new ConsolePrompt());
+using var probe = new NetProbe();
 core.AddTools(new PcTools(), new AppTools(new AppCatalog()), memory, web,
+    new NetworkTools(core.Settings, probe, new SshRunner(secrets, Path.Combine(paths.DataRoot, "ssh-known-hosts.json"))),
     new DesktopTools(new UiSnapshot(), core.Events, () => !string.IsNullOrWhiteSpace(core.Settings.Current.Model.VisionProjectorFile)));
 core.KillSwitch.RegisterCleanup("input", Input.ReleaseAll);
 if (argv.Contains("--dev-tools"))

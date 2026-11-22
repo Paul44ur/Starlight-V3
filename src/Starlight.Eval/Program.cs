@@ -6,6 +6,7 @@ using Starlight;
 using Starlight.Memory;
 using Starlight.Security;
 using Starlight.Tools.Web;
+using Starlight.Tools.Network;
 using Starlight.Agent;
 using Starlight.Eval;
 using Starlight.Model;
@@ -37,7 +38,8 @@ var data = Path.Combine(Path.GetTempPath(), "starlight-eval-" + Guid.NewGuid().T
 var paths = new StarlightPaths(data, AppContext.BaseDirectory);
 using var core = AssistantCore.Start(paths, new DenyAllApprovals(), installCrashHandler: false);
 core.AddTools(new PcTools(), new AppTools(new AppCatalog()), new MemoryTools(new MemoryStore(core.Db)),
-    WebTools.Create(paths, core.Settings, new MemorySecretStore(), new NoUserPrompt()), new DesktopTools(new UiSnapshot(), core.Events, () => false));
+    WebTools.Create(paths, core.Settings, new MemorySecretStore(), new NoUserPrompt()),
+    new NetworkTools(core.Settings, new NetProbe(), new SshRunner(new MemorySecretStore(), Path.Combine(data, "known-hosts.json"))), new DesktopTools(new UiSnapshot(), core.Events, () => false));
 var declarations = core.Tools.Declarations();
 var known = core.Tools.All.Select(t => t.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
 var runnable = cases.Where(c => c.Expect != "tool" || c.Tools.Any(known.Contains)).ToList();

@@ -39,6 +39,10 @@ public sealed class ToolDispatcher(
             && tool.AskForActions.Contains(ToText(action))
             ? Permission.Ask
             : tool.DefaultPermission;
+        if (builtIn == Permission.Safe && arguments is not null && tool.Hint?.PermissionFor(tool.Name, arguments) is { } hinted)
+        {
+            builtIn = hinted;
+        }
         if (builtIn == Permission.Safe && tool.AskAfterUntrusted && SawUntrusted(turnId))
         {
             builtIn = Permission.Ask;
@@ -112,7 +116,9 @@ public sealed class ToolDispatcher(
                 Record(tool, argsJson, source, "user", false, "Declined");
                 return ToolResult.Fail("The user said no. Do not try this again in a different way; ask what they want instead.");
             }
-            if (answer == ApprovalAnswer.Always && !SawUntrusted(turnId))
+            // "Always" is stored for the whole tool, so not when only these arguments asked (an SSH command
+            // outside the allow-list) or when outside text is in the turn.
+            if (answer == ApprovalAnswer.Always && !SawUntrusted(turnId) && tool.Hint?.PermissionFor(tool.Name, arguments) is null)
             {
                 settings.Update(s => s.PermissionOverrides[tool.Name] = Permission.Safe);
             }
@@ -196,6 +202,9 @@ public sealed class ToolDispatcher(
         var parts = args.Where(a => a.Value is not null).Select(a => $"{a.Key}: {Preview(ToText(a.Value), 120)}");
         return $"{tool.Name}  {string.Join(", ", parts)}".Trim();
     }
+
+    /// <summary>An argument as text, whether it came as a string or as JSON.</summary>
+    public static string ArgumentText(object? value) => value is null ? "" : ToText(value);
 
     internal static string ToText(object? value) => value switch
     {

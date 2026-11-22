@@ -6,6 +6,7 @@
     <Project Path="src/Starlight.Tools.Desktop/Starlight.Tools.Desktop.csproj" />
     <Project Path="src/Starlight.Memory/Starlight.Memory.csproj" />
     <Project Path="src/Starlight.Tools.Web/Starlight.Tools.Web.csproj" />
+    <Project Path="src/Starlight.Tools.Network/Starlight.Tools.Network.csproj" />
     <Project Path="src/Starlight.Voice/Starlight.Voice.csproj" />
     <Project Path="src/Starlight.Overlay/Starlight.Overlay.csproj" />
     <Project Path="src/Starlight.DevConsole/Starlight.DevConsole.csproj" />

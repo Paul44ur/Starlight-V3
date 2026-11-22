@@ -7,6 +7,7 @@ using Serilog;
 using Starlight.Memory;
 using Starlight.Security;
 using Starlight.Tools.Web;
+using Starlight.Tools.Network;
 using Starlight.Events;
 using Starlight.Model;
 using Starlight.Tools.Desktop;
@@ -42,6 +43,8 @@ internal sealed class Shell : IDisposable
     private readonly CredentialManagerStore _secrets;
     private readonly CodePrompt _codePrompt;
     private readonly WebTools _web;
+    private readonly NetProbe _probe;
+    private readonly ServerWatcher _watcher;
     private readonly MemoryTools _memory;
 
     public Shell(App app)
@@ -53,10 +56,13 @@ internal sealed class Shell : IDisposable
         _secrets = new CredentialManagerStore();
         _codePrompt = new CodePrompt(_core.Events, text => _speaker?.Say(text));
         _web = WebTools.Create(paths, _core.Settings, _secrets, _codePrompt);
+        _probe = new NetProbe();
+        _watcher = new ServerWatcher(_core.Settings, _probe, _core.Events);
+        var network = new NetworkTools(_core.Settings, _probe, new SshRunner(_secrets, Path.Combine(paths.DataRoot, "ssh-known-hosts.json")));
         _memoryStore = new MemoryStore(_core.Db);
         _memory = new MemoryTools(_memoryStore);
         _memory.TrackTurns(_core.Events);
-        _core.AddTools(new PcTools(), new AppTools(new AppCatalog()), _memory, _web,
+        _core.AddTools(new PcTools(), new AppTools(new AppCatalog()), _memory, _web, network,
             new DesktopTools(new UiSnapshot(), _core.Events, () => !string.IsNullOrWhiteSpace(_core.Settings.Current.Model.VisionProjectorFile)));
         _core.KillSwitch.RegisterCleanup("input", Input.ReleaseAll);
         _core.KillSwitch.RegisterCleanup("pointer", () => _core.Events.Publish(new ClearPointer()));
@@ -93,6 +99,7 @@ internal sealed class Shell : IDisposable
         RegisterHotkeys();
         StartWithWindows.Apply(_core.Settings.Current.General.StartWithWindows);
         _ = Task.Run(StartVoice);
+        _watcher.Start();
         if (string.IsNullOrWhiteSpace(_core.Settings.Current.Model.ChatModelFile))
         {
             ShowSettings();
@@ -323,6 +330,9 @@ internal sealed class Shell : IDisposable
         _wake?.Dispose();
         _recognizer?.Dispose();
         _mic?.Dispose();
+        _watcher.Dispose();
+        _probe.Dispose();
+        _web.DisposeAsync().AsTask().Wait(TimeSpan.FromSeconds(3));
         _model.DisposeAsync().AsTask().Wait(TimeSpan.FromSeconds(5));
         _tray.Dispose();
         _core.Dispose();

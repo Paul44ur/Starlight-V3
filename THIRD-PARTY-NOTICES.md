@@ -7,7 +7,7 @@ Starlight uses these packages through NuGet, under their own licences:
 - OpenAI .NET (MIT)
 - Serilog, Serilog.Sinks.File, Serilog.Formatting.Compact (Apache-2.0)
 - WPF-UI (MIT), H.NotifyIcon.Wpf (MIT), Markdig (BSD-2-Clause), Velopack (MIT)
-- NAudio (MIT), Whisper.net (MIT), sherpa-onnx (Apache-2.0)
+- NAudio (MIT), Whisper.net (MIT), sherpa-onnx (Apache-2.0), SSH.NET (MIT)
 - FlaUI (MIT), AngleSharp (MIT)
 - xUnit (Apache-2.0), tests only
 
