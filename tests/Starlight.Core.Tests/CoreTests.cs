@@ -183,3 +183,26 @@ public sealed class ConversationsTests
         Assert.Same(a, all.ForVoice());
     }
 }
+
+public sealed class JobObjectTests
+{
+    [Fact]
+    public void Command_line_quotes_spaces_quotes_and_trailing_backslashes()
+    {
+        var line = Starlight.Platform.JobObject.CommandLine(@"C:\Program Files\Edge\msedge.exe",
+            ["--headless=new", @"--user-data-dir=C:\Users\a b\Profile\", "say \"hi\"", @"a\\b", @"x\""", ""]);
+        Assert.Equal("\"C:\\Program Files\\Edge\\msedge.exe\" --headless=new \"--user-data-dir=C:\\Users\\a b\\Profile\\\\\" "
+            + "\"say \\\"hi\\\"\" a\\\\b \"x\\\\\\\"\" \"\"", line);
+    }
+
+    [Fact]
+    public void Start_runs_the_program_with_its_arguments()
+    {
+        using var job = new Starlight.Platform.JobObject();
+        var exe = OperatingSystem.IsWindows() ? Path.Combine(Environment.SystemDirectory, "cmd.exe") : "/bin/sh";
+        string[] args = OperatingSystem.IsWindows() ? ["/c", "exit 7"] : ["-c", "exit 7"];
+        using var p = job.Start(exe, args);
+        Assert.True(p.WaitForExit(10_000));
+        Assert.Equal(7, p.ExitCode);
+    }
+}

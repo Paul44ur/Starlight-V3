@@ -44,6 +44,9 @@ public sealed class EdgeBrowser(string profileDir, string? exe = null) : IBrowse
     /// <summary>More browser flags; tests on Linux need --no-sandbox when running as root.</summary>
     internal string[] ExtraArgs { get; init; } = [];
 
+    /// <summary>Decides for every request the page makes, redirects and images included. Public web only by default.</summary>
+    internal Func<Uri, CancellationToken, Task<bool>> Allow { get; init; } = UrlGuard.IsPublicAsync;
+
     public static string? FindExe()
     {
         string[] roots = [Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86), Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),
@@ -66,7 +69,7 @@ public sealed class EdgeBrowser(string profileDir, string? exe = null) : IBrowse
         var target = await cdp.SendAsync("Target.createTarget", new JsonObject { ["url"] = "about:blank" }, null, ct);
         var targetId = target["targetId"]!.GetValue<string>();
         var attached = await cdp.SendAsync("Target.attachToTarget", new JsonObject { ["targetId"] = targetId, ["flatten"] = true }, null, ct);
-        var page = new CdpPage(cdp, targetId, attached["sessionId"]!.GetValue<string>(), url);
+        var page = new CdpPage(cdp, targetId, attached["sessionId"]!.GetValue<string>(), url, Allow);
         await page.InitAsync(cookies, ct);
         await page.NavigateAsync(url, ct);
         return page;
@@ -86,25 +89,15 @@ public sealed class EdgeBrowser(string profileDir, string? exe = null) : IBrowse
             Directory.CreateDirectory(profileDir);
             var portFile = Path.Combine(profileDir, "DevToolsActivePort");
             File.Delete(portFile);
-            var psi = new ProcessStartInfo(path) { UseShellExecute = false, CreateNoWindow = true };
-            foreach (var a in new[]
-            {
+            string[] args =
+            [
+                .. ExtraArgs,
                 "--headless=new", "--remote-debugging-port=0", "--user-data-dir=" + profileDir, "--no-first-run", "--no-default-browser-check",
                 "--disable-extensions", "--disable-sync", "--disable-features=msEdgeSidebarV2,EdgeCollections", "--mute-audio", "--disable-background-networking", "about:blank",
-            })
-            {
-                psi.ArgumentList.Add(a);
-            }
-            foreach (var a in ExtraArgs)
-            {
-                psi.ArgumentList.Insert(0, a);
-            }
-            _process = Process.Start(psi) ?? throw new ToolException("The browser did not start.");
-            if (OperatingSystem.IsWindows())
-            {
-                _job ??= new JobObject();
-                _job.Add(_process);
-            }
+            ];
+            // Started inside the job, so the renderer and GPU processes Edge starts at once are in it too.
+            _job ??= new JobObject();
+            _process = _job.Start(path, args);
             var deadline = DateTime.UtcNow.AddSeconds(15);
             string[]? lines = null;
             while (DateTime.UtcNow < deadline)
@@ -180,12 +173,16 @@ public sealed class EdgeBrowser(string profileDir, string? exe = null) : IBrowse
     }
 }
 
-internal sealed class CdpPage(Cdp cdp, string targetId, string sessionId, Uri url) : IBrowserSession
+internal sealed class CdpPage(Cdp cdp, string targetId, string sessionId, Uri url, Func<Uri, CancellationToken, Task<bool>> allow) : IBrowserSession
 {
     public Uri Url { get; private set; } = url;
 
     public async Task InitAsync(IReadOnlyList<BrowserCookie> cookies, CancellationToken ct)
     {
+        // Every request waits here until it is checked: a page cannot reach this PC or the home network,
+        // not through a redirect, an image or a script either.
+        _unsubscribe = cdp.On("Fetch.requestPaused", sessionId, GuardAsync);
+        await cdp.SendAsync("Fetch.enable", new JsonObject { ["patterns"] = new JsonArray(new JsonObject { ["urlPattern"] = "*" }) }, sessionId, ct);
         await cdp.SendAsync("Page.enable", null, sessionId, ct);
         await cdp.SendAsync("Network.enable", null, sessionId, ct);
         if (cookies.Count > 0)
@@ -212,12 +209,52 @@ internal sealed class CdpPage(Cdp cdp, string targetId, string sessionId, Uri ur
         }
     }
 
+    private IDisposable? _unsubscribe;
+
+    /// <summary>The addresses this page was not allowed to reach.</summary>
+    public ConcurrentQueue<string> Blocked { get; } = new();
+
+    private async Task GuardAsync(JsonObject e)
+    {
+        var id = e["requestId"]!.GetValue<string>();
+        var url = e["request"]?["url"]?.GetValue<string>();
+        bool ok;
+        try
+        {
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+            ok = Uri.TryCreate(url, UriKind.Absolute, out var u) && await allow(u, cts.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            ok = false;
+        }
+        if (!ok)
+        {
+            Blocked.Enqueue(url ?? "");
+            Log.Warning("Browser request blocked: {Url}", url);
+        }
+        try
+        {
+            await (ok
+                ? cdp.SendAsync("Fetch.continueRequest", new JsonObject { ["requestId"] = id }, sessionId, default)
+                : cdp.SendAsync("Fetch.failRequest", new JsonObject { ["requestId"] = id, ["errorReason"] = "AccessDenied" }, sessionId, default));
+        }
+        catch (ToolException)
+        {
+            // The page went away while the request was checked.
+        }
+    }
+
     public async Task NavigateAsync(Uri to, CancellationToken ct)
     {
         var loaded = cdp.WaitForEvent("Page.loadEventFired", sessionId);
         var nav = await cdp.SendAsync("Page.navigate", new JsonObject { ["url"] = to.ToString() }, sessionId, ct);
         if (nav["errorText"]?.GetValue<string>() is { Length: > 0 } error)
         {
+            if (!Blocked.IsEmpty)
+            {
+                throw new ToolException($"{to.Host} sent the browser to an address on this PC or the local network, so it was stopped.");
+            }
             throw new ToolException($"The browser could not open {to.Host}: {error}");
         }
         await WaitAsync(loaded, TimeSpan.FromSeconds(20), ct);
@@ -272,6 +309,7 @@ internal sealed class CdpPage(Cdp cdp, string targetId, string sessionId, Uri ur
 
     public async ValueTask DisposeAsync()
     {
+        _unsubscribe?.Dispose();
         try
         {
             using var cts = new CancellationTokenSource(3000);
@@ -308,6 +346,21 @@ internal sealed class Cdp : IAsyncDisposable
         ws.Options.KeepAliveInterval = TimeSpan.FromSeconds(20);
         await ws.ConnectAsync(uri, ct);
         return new Cdp(ws);
+    }
+
+    private readonly ConcurrentDictionary<Guid, (string Method, string? Session, Func<JsonObject, Task> Handler)> _handlers = new();
+
+    /// <summary>Calls the handler for every such event, off the reading loop. Dispose the result to stop.</summary>
+    public IDisposable On(string method, string? session, Func<JsonObject, Task> handler)
+    {
+        var key = Guid.NewGuid();
+        _handlers[key] = (method, session, handler);
+        return new Unsubscribe(() => _handlers.TryRemove(key, out _));
+    }
+
+    private sealed class Unsubscribe(Action undo) : IDisposable
+    {
+        public void Dispose() => undo();
     }
 
     public Task WaitForEvent(string method, string? session)
@@ -401,6 +454,21 @@ internal sealed class Cdp : IAsyncDisposable
                 else if (json["method"]?.GetValue<string>() is { } method)
                 {
                     var session = json["sessionId"]?.GetValue<string>();
+                    var parameters = json["params"]?.AsObject() ?? new JsonObject();
+                    foreach (var h in _handlers.Values.Where(h => h.Method == method && (h.Session is null || h.Session == session)))
+                    {
+                        _ = Task.Run(async () =>
+                        {
+                            try
+                            {
+                                await h.Handler(parameters);
+                            }
+                            catch (Exception ex)
+                            {
+                                Log.Warning(ex, "Browser event {Method} failed", method);
+                            }
+                        });
+                    }
                     foreach (var w in _waiters.Values.Where(w => w.Method == method && (w.Session is null || w.Session == session)))
                     {
                         w.Done.TrySetResult();

@@ -48,6 +48,13 @@ public sealed class BrowserTests
                     {
                         ctx.Response.Headers.Add("Set-Cookie", cookie);
                     }
+                    if (body.StartsWith("redirect:", StringComparison.Ordinal))
+                    {
+                        ctx.Response.StatusCode = 302;
+                        ctx.Response.Headers.Add("Location", body["redirect:".Length..]);
+                        ctx.Response.Close();
+                        continue;
+                    }
                     ctx.Response.ContentType = "text/html; charset=utf-8";
                     var bytes = Encoding.UTF8.GetBytes(body);
                     await ctx.Response.OutputStream.WriteAsync(bytes);
@@ -66,8 +73,51 @@ public sealed class BrowserTests
         }
     }
 
+    // The test site is on 127.0.0.1, so it stands in for the public web here; "/private" stands in for the home network.
     private static EdgeBrowser Browser(TestEnv env) =>
-        new(Path.Combine(env.Root, "profile"), Chromium) { ExtraArgs = ["--no-sandbox", "--disable-gpu"] };
+        new(Path.Combine(env.Root, "profile"), Chromium)
+        {
+            ExtraArgs = ["--no-sandbox", "--disable-gpu"],
+            Allow = (u, _) => Task.FromResult(!u.AbsolutePath.StartsWith("/private", StringComparison.Ordinal)),
+        };
+
+    [Fact]
+    public async Task Redirects_and_images_to_blocked_addresses_never_load()
+    {
+        Assert.SkipUnless(CanRun, "needs Chromium on Linux");
+        using var env = new TestEnv();
+        var hits = new System.Collections.Concurrent.ConcurrentBag<string>();
+        using var site = new Site((req, _) =>
+        {
+            hits.Add(req.Url!.AbsolutePath);
+            return req.Url.AbsolutePath switch
+            {
+                "/page" => ("<html><body><main><p>A public page with a picture.</p><img src=/private/pixel.png></main></body></html>", null),
+                "/go" => ("redirect:/private/admin", null),
+                _ => ("<html><body>router admin</body></html>", null),
+            };
+        });
+        await using var browser = Browser(env);
+
+        var (_, html) = await browser.RenderAsync(site.Url("/page"), [], default);
+        Assert.Contains("A public page", html);
+        var go = await Assert.ThrowsAsync<Starlight.Tools.ToolException>(() => browser.RenderAsync(site.Url("/go"), [], default));
+        Assert.Contains("local network", go.Message);
+
+        Assert.DoesNotContain(hits, h => h.StartsWith("/private", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task Public_check_refuses_local_hosts_and_odd_schemes()
+    {
+        Assert.False(await UrlGuard.IsPublicAsync(new Uri("http://192.168.1.1/"), default));
+        Assert.False(await UrlGuard.IsPublicAsync(new Uri("http://localhost:8080/"), default));
+        Assert.False(await UrlGuard.IsPublicAsync(new Uri("http://[::1]/"), default));
+        Assert.False(await UrlGuard.IsPublicAsync(new Uri("file:///C:/Windows/win.ini"), default));
+        Assert.False(await UrlGuard.IsPublicAsync(new Uri("http://printer.local/"), default));
+        Assert.True(await UrlGuard.IsPublicAsync(new Uri("https://93.184.215.14/"), default));
+        Assert.True(await UrlGuard.IsPublicAsync(new Uri("data:text/plain,hi"), default));
+    }
 
     [Fact]
     public async Task Renders_a_page_whose_text_comes_from_scripts()

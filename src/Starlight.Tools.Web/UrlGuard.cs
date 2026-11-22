@@ -51,6 +51,36 @@ public static class UrlGuard
         return !(ip.IsIPv6LinkLocal || ip.IsIPv6SiteLocal || ip.IsIPv6Multicast || ip.IsIPv6UniqueLocal);
     }
 
+    /// <summary>
+    /// For the headless browser, which connects by itself: true only for http or https to a host whose every
+    /// address is public. Other schemes that load nothing from the network (data, blob, about) are allowed too.
+    /// </summary>
+    public static async Task<bool> IsPublicAsync(Uri uri, CancellationToken ct)
+    {
+        if (uri.Scheme is "data" or "blob" or "about")
+        {
+            return true;
+        }
+        if (uri.Scheme is not ("http" or "https") || string.IsNullOrEmpty(uri.Host) || uri.IsLoopback
+            || uri.Host.EndsWith(".local", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+        if (IPAddress.TryParse(uri.Host.Trim('[', ']'), out var ip))
+        {
+            return IsPublic(ip);
+        }
+        try
+        {
+            var addresses = await Dns.GetHostAddressesAsync(uri.DnsSafeHost, ct);
+            return addresses.Length > 0 && addresses.All(IsPublic);
+        }
+        catch (SocketException)
+        {
+            return false;
+        }
+    }
+
     /// <summary>A connect step for <see cref="SocketsHttpHandler"/> that refuses non-public addresses.</summary>
     public static async ValueTask<Stream> ConnectPublicAsync(SocketsHttpConnectionContext context, CancellationToken ct)
     {
