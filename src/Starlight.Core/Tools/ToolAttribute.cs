@@ -18,6 +18,10 @@ public sealed class ToolAttribute(string name, Permission permission = Permissio
     public string Name { get; } = name;
     public Permission Permission { get; } = permission;
     public int TimeoutSeconds { get; init; } = 30;
+
+    /// <summary>For a Safe tool with an <c>action</c> parameter: the actions that ask first anyway
+    /// (for example <c>app</c> opens without asking but asks before closing).</summary>
+    public string[] AskForActions { get; init; } = [];
 }
 
 /// <summary>A group of tools. Providers never reference each other; they call other tools through <see cref="IToolCaller"/>.</summary>

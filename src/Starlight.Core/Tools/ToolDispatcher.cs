@@ -27,8 +27,20 @@ public sealed class ToolDispatcher(
     /// <summary>Sources that may not run tools that act on the PC (reserved for a phone channel later).</summary>
     private static readonly HashSet<string> RemoteSources = new(StringComparer.OrdinalIgnoreCase) { "remote" };
 
-    public Permission EffectivePermission(ToolDefinition tool) =>
-        settings.Current.PermissionOverrides.TryGetValue(tool.Name, out var p) ? p : tool.DefaultPermission;
+    public Permission EffectivePermission(ToolDefinition tool, IDictionary<string, object?>? arguments = null)
+    {
+        if (settings.Current.PermissionOverrides.TryGetValue(tool.Name, out var p))
+        {
+            return p;
+        }
+        if (tool.DefaultPermission == Permission.Safe && tool.AskForActions.Count > 0
+            && arguments is not null && arguments.TryGetValue("action", out var action)
+            && tool.AskForActions.Contains(ToText(action)))
+        {
+            return Permission.Ask;
+        }
+        return tool.DefaultPermission;
+    }
 
     public Task<ToolResult> CallAsync(string tool, IDictionary<string, object?> arguments, CancellationToken ct)
     {
@@ -52,7 +64,7 @@ public sealed class ToolDispatcher(
             return ToolResult.Fail("Stopped: the kill switch is engaged. Tell the user to resume Starlight first.");
         }
 
-        var permission = EffectivePermission(tool);
+        var permission = EffectivePermission(tool, arguments);
         if (permission == Permission.Blocked)
         {
             Record(tool, argsJson, source, "blocked", false, "Blocked in settings");

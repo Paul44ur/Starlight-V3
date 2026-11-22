@@ -31,6 +31,9 @@ public sealed class SampleTools : IToolProvider
     [Tool("crashes"), Description("Throws a bug.")]
     public string Crashes() => throw new InvalidOperationException("bug");
 
+    [Tool("thing", AskForActions = ["close"]), Description("Opens or closes a thing.")]
+    public string Thing([Description("open or close")] string action) => action + " done";
+
     [Tool("big"), Description("Returns a lot of text.")]
     public string Big() => new('x', ToolDispatcher.MaxResultChars + 100);
 }
@@ -95,6 +98,20 @@ public sealed class ToolDispatcherTests
         Assert.Equal(1, approvals.Asked);
         Assert.Equal(2, tools.Deletes);
         Assert.Equal(Permission.Safe, env.Settings.Current.PermissionOverrides["delete_thing"]);
+    }
+
+    [Fact]
+    public async Task Only_listed_actions_ask()
+    {
+        using var env = new TestEnv();
+        env.Registry.Add(new SampleTools());
+        var approvals = new FixedApprovals(ApprovalAnswer.No);
+        var d = env.Dispatcher(approvals);
+        var open = await d.InvokeAsync("thing", Args(("action", "open")), "t1", "voice", default);
+        var close = await d.InvokeAsync("thing", Args(("action", "close")), "t1", "voice", default);
+        Assert.True(open.Ok);
+        Assert.False(close.Ok);
+        Assert.Equal(1, approvals.Asked);
     }
 
     [Fact]

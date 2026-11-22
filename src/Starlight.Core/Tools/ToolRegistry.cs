@@ -4,7 +4,7 @@ using Microsoft.Extensions.AI;
 
 namespace Starlight.Tools;
 
-public sealed record ToolDefinition(string Name, string Description, Permission DefaultPermission, TimeSpan Timeout, AIFunction Function, string Group);
+public sealed record ToolDefinition(string Name, string Description, Permission DefaultPermission, TimeSpan Timeout, AIFunction Function, string Group, IReadOnlySet<string> AskForActions);
 
 /// <summary>Collects the tools of all providers. The JSON schema for each comes from the method's parameters.</summary>
 public sealed class ToolRegistry
@@ -38,7 +38,8 @@ public sealed class ToolRegistry
                 Description = description,
             });
             _tools[attr.Name] = new ToolDefinition(attr.Name, description, attr.Permission,
-                TimeSpan.FromSeconds(attr.TimeoutSeconds), function, group);
+                TimeSpan.FromSeconds(attr.TimeoutSeconds), function, group,
+                new HashSet<string>(attr.AskForActions, StringComparer.OrdinalIgnoreCase));
         }
     }
 
