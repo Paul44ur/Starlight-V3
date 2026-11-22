@@ -22,6 +22,17 @@ public sealed class ToolAttribute(string name, Permission permission = Permissio
     /// <summary>For a Safe tool with an <c>action</c> parameter: the actions that ask first anyway
     /// (for example <c>app</c> opens without asking but asks before closing).</summary>
     public string[] AskForActions { get; init; } = [];
+
+    /// <summary>The result holds text from outside (web pages). It is marked as data, and after it, tools that
+    /// normally ask always ask in that turn, even if the user chose "Always" (plan 5.8, injection guard).</summary>
+    public bool UntrustedOutput { get; init; }
+
+    /// <summary>A Safe tool that asks once outside text is in the turn (memory_remember: a page must not plant
+    /// lasting facts).</summary>
+    public bool AskAfterUntrusted { get; init; }
+
+    /// <summary>Longest result the model gets, in characters.</summary>
+    public int MaxResultChars { get; init; } = 6000;
 }
 
 /// <summary>A group of tools. Providers never reference each other; they call other tools through <see cref="IToolCaller"/>.</summary>

@@ -4,6 +4,8 @@ using System.Text;
 using Microsoft.Extensions.AI;
 using Starlight;
 using Starlight.Memory;
+using Starlight.Security;
+using Starlight.Tools.Web;
 using Starlight.Agent;
 using Starlight.Eval;
 using Starlight.Model;
@@ -34,7 +36,8 @@ var cases = Directory.GetFiles(casesDir, "*.json").SelectMany(EvalCase.Load).ToL
 var data = Path.Combine(Path.GetTempPath(), "starlight-eval-" + Guid.NewGuid().ToString("N")[..8]);
 var paths = new StarlightPaths(data, AppContext.BaseDirectory);
 using var core = AssistantCore.Start(paths, new DenyAllApprovals(), installCrashHandler: false);
-core.AddTools(new PcTools(), new AppTools(new AppCatalog()), new MemoryTools(new MemoryStore(core.Db)), new DesktopTools(new UiSnapshot(), core.Events, () => false));
+core.AddTools(new PcTools(), new AppTools(new AppCatalog()), new MemoryTools(new MemoryStore(core.Db)),
+    WebTools.Create(paths, core.Settings, new MemorySecretStore(), new NoUserPrompt()), new DesktopTools(new UiSnapshot(), core.Events, () => false));
 var declarations = core.Tools.Declarations();
 var known = core.Tools.All.Select(t => t.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
 var runnable = cases.Where(c => c.Expect != "tool" || c.Tools.Any(known.Contains)).ToList();

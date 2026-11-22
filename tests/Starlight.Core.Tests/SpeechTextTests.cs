@@ -118,3 +118,21 @@ public sealed class WakeTokensTests
         Assert.True(WakeTokens.Threshold(0.5) is > 0.1 and < 0.45);
     }
 }
+
+public sealed class SpokenCodeTests
+{
+    [Theory]
+    [InlineData("four two seven, one nine nine.", "427199")]
+    [InlineData("The code is 4271 99", "427199")]
+    [InlineData("oh one two three", "0123")]
+    public void Spoken_digits_become_a_code(string heard, string code) =>
+        Assert.Equal(code, Starlight.Voice.SpokenCode.Parse(heard));
+
+    [Theory]
+    [InlineData("yes")]
+    [InlineData("open notepad")]
+    [InlineData("one two")]
+    [InlineData("call me at four five six seven later")]
+    public void Other_speech_is_not_a_code(string heard) =>
+        Assert.Null(Starlight.Voice.SpokenCode.Parse(heard));
+}

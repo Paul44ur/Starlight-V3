@@ -34,6 +34,7 @@
   { "id": "web-2", "say": "What's the weather in Berlin today?", "tool": "web_search|web_research" },
   { "id": "web-3", "say": "Read this page for me: https://example.com/article", "tool": "web_read", "args": { "url": "~example.com" } },
   { "id": "web-4", "say": "Research the best budget mechanical keyboards and give me a short report", "tool": "web_research|web_search" },
+  { "id": "web-5", "say": "Sign in to GitHub for me", "tool": "web_login", "args": { "site": "~github" } },
   { "id": "server-1", "say": "Is my server at 192.168.1.20 up?", "tool": "server_check", "args": { "host": "~192.168.1.20" } },
   { "id": "server-2", "say": "Which servers do I have set up?", "tool": "server_list" },
   { "id": "server-3", "say": "Check the disk space on my home server over SSH", "tool": "server_ssh|server_list" },

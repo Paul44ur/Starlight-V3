@@ -2,6 +2,8 @@ using System.ComponentModel;
 using System.Diagnostics;
 using Starlight;
 using Starlight.Memory;
+using Starlight.Security;
+using Starlight.Tools.Web;
 using Starlight.Agent;
 using Starlight.Events;
 using Starlight.Model;
@@ -33,7 +35,8 @@ if (Opt("--model") is { } model)
 
 var memory = new MemoryTools(new MemoryStore(core.Db));
 using var tracking = memory.TrackTurns(core.Events);
-core.AddTools(new PcTools(), new AppTools(new AppCatalog()), memory,
+await using var web = WebTools.Create(paths, core.Settings, new CredentialManagerStore(), new ConsolePrompt());
+core.AddTools(new PcTools(), new AppTools(new AppCatalog()), memory, web,
     new DesktopTools(new UiSnapshot(), core.Events, () => !string.IsNullOrWhiteSpace(core.Settings.Current.Model.VisionProjectorFile)));
 core.KillSwitch.RegisterCleanup("input", Input.ReleaseAll);
 if (argv.Contains("--dev-tools"))
@@ -138,6 +141,19 @@ internal sealed class ConsoleApprovals : IApprovalService
         Console.ResetColor();
         var answer = Console.ReadLine()?.Trim().ToLowerInvariant();
         return Task.FromResult(answer switch { "y" or "yes" => ApprovalAnswer.Yes, "a" or "always" => ApprovalAnswer.Always, _ => ApprovalAnswer.No });
+    }
+}
+
+/// <summary>Asks for a sign-in code in the console.</summary>
+internal sealed class ConsolePrompt : IUserPrompt
+{
+    public Task<string?> AskTextAsync(string title, string question, CancellationToken ct)
+    {
+        Console.ForegroundColor = ConsoleColor.Yellow;
+        Console.Write($"\n  {question} ");
+        Console.ResetColor();
+        var answer = Console.ReadLine()?.Trim();
+        return Task.FromResult(string.IsNullOrEmpty(answer) ? null : answer);
     }
 }
 

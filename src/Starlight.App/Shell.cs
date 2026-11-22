@@ -5,6 +5,8 @@ using System.Windows.Controls;
 using H.NotifyIcon;
 using Serilog;
 using Starlight.Memory;
+using Starlight.Security;
+using Starlight.Tools.Web;
 using Starlight.Events;
 using Starlight.Model;
 using Starlight.Tools.Desktop;
@@ -37,6 +39,9 @@ internal sealed class Shell : IDisposable
     private SettingsWindow? _settings;
     private ChatWindow? _chat;
     private readonly MemoryStore _memoryStore;
+    private readonly CredentialManagerStore _secrets;
+    private readonly CodePrompt _codePrompt;
+    private readonly WebTools _web;
     private readonly MemoryTools _memory;
 
     public Shell(App app)
@@ -45,10 +50,13 @@ internal sealed class Shell : IDisposable
         var paths = StarlightPaths.Default();
         var approvals = new SwitchableApprovals();
         _core = AssistantCore.Start(paths, approvals);
+        _secrets = new CredentialManagerStore();
+        _codePrompt = new CodePrompt(_core.Events, text => _speaker?.Say(text));
+        _web = WebTools.Create(paths, _core.Settings, _secrets, _codePrompt);
         _memoryStore = new MemoryStore(_core.Db);
         _memory = new MemoryTools(_memoryStore);
         _memory.TrackTurns(_core.Events);
-        _core.AddTools(new PcTools(), new AppTools(new AppCatalog()), _memory,
+        _core.AddTools(new PcTools(), new AppTools(new AppCatalog()), _memory, _web,
             new DesktopTools(new UiSnapshot(), _core.Events, () => !string.IsNullOrWhiteSpace(_core.Settings.Current.Model.VisionProjectorFile)));
         _core.KillSwitch.RegisterCleanup("input", Input.ReleaseAll);
         _core.KillSwitch.RegisterCleanup("pointer", () => _core.Events.Publish(new ClearPointer()));
@@ -186,6 +194,8 @@ internal sealed class Shell : IDisposable
             {
                 ApprovalPending = () => _overlay.IsAsking,
                 AnswerApproval = _overlay.AnswerByVoice,
+                CodePending = () => _codePrompt.IsAsking,
+                AnswerCode = _codePrompt.AnswerByVoice,
                 ConversationFor = _core.Conversations.ForVoice,
             };
             if (settings.WakeWordEnabled)
@@ -263,7 +273,7 @@ internal sealed class Shell : IDisposable
     {
         if (_settings is null)
         {
-            _settings = new SettingsWindow(_core, _model, ExportDiagnostics, ReportProblem);
+            _settings = new SettingsWindow(_core, _model, _secrets, ExportDiagnostics, ReportProblem);
             _settings.Closed += (_, _) => _settings = null;
         }
         _settings.Show();

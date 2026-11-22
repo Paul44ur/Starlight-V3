@@ -124,3 +124,35 @@ public static class VoiceApproval
         return no.Contains(t) ? Starlight.Tools.ApprovalAnswer.No : null;
     }
 }
+
+/// <summary>A spoken code such as "four two seven, one nine nine" as digits; null if it is not a code.</summary>
+public static class SpokenCode
+{
+    private static readonly Dictionary<string, char> Digits = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["zero"] = '0', ["oh"] = '0', ["o"] = '0', ["one"] = '1', ["two"] = '2', ["to"] = '2', ["too"] = '2', ["three"] = '3', ["four"] = '4', ["for"] = '4',
+        ["five"] = '5', ["six"] = '6', ["seven"] = '7', ["eight"] = '8', ["nine"] = '9',
+    };
+
+    public static string? Parse(string heard)
+    {
+        var sb = new System.Text.StringBuilder();
+        var words = new string(heard.Select(ch => char.IsLetterOrDigit(ch) ? ch : ' ').ToArray()).Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        foreach (var w in words)
+        {
+            if (w.All(char.IsDigit))
+            {
+                sb.Append(w);
+            }
+            else if (Digits.TryGetValue(w, out var d))
+            {
+                sb.Append(d);
+            }
+            else if (sb.Length > 0 || !w.Equals("code", StringComparison.OrdinalIgnoreCase) && !w.Equals("is", StringComparison.OrdinalIgnoreCase) && !w.Equals("the", StringComparison.OrdinalIgnoreCase))
+            {
+                return null;
+            }
+        }
+        return sb.Length is >= 4 and <= 10 ? sb.ToString() : null;
+    }
+}

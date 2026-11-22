@@ -67,6 +67,10 @@ public sealed class VoiceLoop : IDisposable
     /// <summary>True while a Yes/No card is open (the turn waits for it, so listening must not cancel it).</summary>
     public Func<bool>? ApprovalPending { get; set; }
 
+    /// <summary>Set by the app: a sign-in code is asked for, and the spoken digits answer it.</summary>
+    public Func<bool>? CodePending { get; set; }
+    public Action<string>? AnswerCode { get; set; }
+
     /// <summary>Gives the conversation a spoken request goes into (shared with the chat window).</summary>
     public Func<Conversation>? ConversationFor { get; set; }
 
@@ -172,6 +176,12 @@ public sealed class VoiceLoop : IDisposable
             if (ApprovalPending?.Invoke() == true && VoiceApproval.Parse(text) is { } answer)
             {
                 AnswerApproval?.Invoke(answer);
+                ResumeWake();
+                return;
+            }
+            if (CodePending?.Invoke() == true && SpokenCode.Parse(text) is { } code)
+            {
+                AnswerCode?.Invoke(code);
                 ResumeWake();
                 return;
             }

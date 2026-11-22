@@ -72,6 +72,18 @@ public sealed class WebSettings
     public string SearchProvider { get; set; } = "auto";
     public string SearxngUrl { get; set; } = "";
     public int MaxRequestsPerSecond { get; set; } = 5;
+    /// <summary>Sites web_login may sign in to. The user name and password are in Windows Credential Manager.</summary>
+    public List<WebLogin> Logins { get; set; } = [];
+}
+
+public sealed class WebLogin
+{
+    public string Name { get; set; } = "";
+    public string LoginUrl { get; set; } = "";
+
+    /// <summary>Credential Manager key for this login.</summary>
+    [JsonIgnore]
+    public string SecretKey => "login/" + (Uri.TryCreate(LoginUrl, UriKind.Absolute, out var u) ? u.Host.ToLowerInvariant() : Name.ToLowerInvariant());
 }
 
 public sealed class ServerEntry

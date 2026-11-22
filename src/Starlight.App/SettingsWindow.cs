@@ -8,12 +8,15 @@ using Microsoft.Win32;
 using Starlight.Diagnostics;
 using Starlight.Events;
 using Starlight.Model;
+using Starlight.Security;
 using Starlight.Settings;
 using Starlight.Tools;
+using Starlight.Tools.Web;
 using Wpf.Ui.Controls;
 using Button = Wpf.Ui.Controls.Button;
 using TextBlock = System.Windows.Controls.TextBlock;
 using TextBox = Wpf.Ui.Controls.TextBox;
+using PasswordBox = System.Windows.Controls.PasswordBox;
 
 namespace Starlight.App;
 
@@ -27,10 +30,12 @@ internal sealed class SettingsWindow : FluentWindow
     private readonly ComboBox _modelFile = new() { MinWidth = 320 };
     private readonly ComboBox _projector = new() { MinWidth = 320 };
     private readonly IDisposable _statusSub;
+    private readonly ISecretStore _secrets;
 
-    public SettingsWindow(AssistantCore core, ModelHost model, Action export, Action report)
+    public SettingsWindow(AssistantCore core, ModelHost model, ISecretStore secrets, Action export, Action report)
     {
         _core = core;
+        _secrets = secrets;
         _model = model;
         _draft = JsonSerializer.Deserialize<AppSettings>(core.Settings.ToJson(), SettingsJson)!;
         Title = "Starlight settings";
@@ -44,6 +49,7 @@ internal sealed class SettingsWindow : FluentWindow
         tabs.Items.Add(Tab("General", General()));
         tabs.Items.Add(Tab("Voice", VoiceSection()));
         tabs.Items.Add(Tab("Model", ModelSection()));
+        tabs.Items.Add(Tab("Web", WebSection()));
         tabs.Items.Add(Tab("Permissions", Permissions()));
         tabs.Items.Add(Tab("Diagnostics", Diagnostics(export, report)));
 
@@ -209,6 +215,109 @@ internal sealed class SettingsWindow : FluentWindow
         return p;
     }
 
+    private UIElement WebSection()
+    {
+        var w = _draft.Web;
+        var p = Section("Web", "How Starlight searches and which sites it may sign in to. Keys and passwords go to Windows Credential Manager, never into a file.");
+        var provider = new ComboBox { ItemsSource = new[] { "auto", "searxng", "brave", "duckduckgo" }, SelectedItem = w.SearchProvider, Width = 200, HorizontalAlignment = HorizontalAlignment.Left };
+        provider.SelectionChanged += (_, _) => w.SearchProvider = provider.SelectedItem as string ?? "auto";
+        Row(p, "Search engine", provider, "auto: your SearXNG if set, else Brave Search if a key is saved, else DuckDuckGo.");
+        Row(p, "SearXNG address", Text(w.SearxngUrl, v => w.SearxngUrl = v.Trim()), "If you run your own SearXNG, for example http://192.168.1.20:8080. It must allow the JSON format.");
+
+        var key = new PasswordBox { Width = 320, HorizontalAlignment = HorizontalAlignment.Left };
+        var keyState = new TextBlock { Opacity = 0.7, FontSize = 12, Margin = new Thickness(0, 4, 0, 0) };
+        void ShowKeyState() => keyState.Text = _secrets.Get(WebTools.BraveKey) is null ? "No key saved." : "A key is saved.";
+        var saveKey = new Button { Content = "Save key", Margin = new Thickness(8, 0, 0, 0) };
+        saveKey.Click += (_, _) =>
+        {
+            if (key.Password.Trim().Length > 0)
+            {
+                _secrets.Set(WebTools.BraveKey, "", key.Password.Trim());
+                key.Clear();
+            }
+            ShowKeyState();
+        };
+        var removeKey = new Button { Content = "Remove", Margin = new Thickness(8, 0, 0, 0) };
+        removeKey.Click += (_, _) => { _secrets.Delete(WebTools.BraveKey); ShowKeyState(); };
+        var keyRow = new StackPanel { Orientation = Orientation.Horizontal };
+        keyRow.Children.Add(key);
+        keyRow.Children.Add(saveKey);
+        keyRow.Children.Add(removeKey);
+        Row(p, "Brave Search key", keyRow, "Optional. A free key from brave.com/search/api gives better results than DuckDuckGo.");
+        p.Children.Add(keyState);
+        ShowKeyState();
+        Row(p, "Requests per second", Number(w.MaxRequestsPerSecond, v => w.MaxRequestsPerSecond = Math.Min(v, 20)), "For all sites together. Each site gets at most one per second.");
+
+        p.Children.Add(new TextBlock { Text = "Sign-ins", FontSize = 16, FontWeight = FontWeights.SemiBold, Margin = new Thickness(0, 20, 0, 4) });
+        p.Children.Add(new TextBlock { Text = "Sites Starlight may sign in to when you ask (it asks first every time). It never sees the password.", Opacity = 0.7, TextWrapping = TextWrapping.Wrap });
+        var list = new StackPanel { Margin = new Thickness(0, 8, 0, 8) };
+        void Fill()
+        {
+            list.Children.Clear();
+            foreach (var login in w.Logins.ToList())
+            {
+                var row = new DockPanel { Margin = new Thickness(0, 0, 0, 4) };
+                var remove = new Button { Content = "Remove" };
+                remove.Click += (_, _) =>
+                {
+                    _secrets.Delete(login.SecretKey);
+                    w.Logins.Remove(login);
+                    _core.Settings.Update(s => s.Web.Logins.RemoveAll(l => l.SecretKey == login.SecretKey));
+                    Fill();
+                };
+                DockPanel.SetDock(remove, Dock.Right);
+                row.Children.Add(remove);
+                var user = _secrets.Get(login.SecretKey)?.UserName ?? "(password missing)";
+                row.Children.Add(new TextBlock { Text = $"{login.Name}  ·  {user}  ·  {login.LoginUrl}", VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis });
+                list.Children.Add(row);
+            }
+            if (w.Logins.Count == 0)
+            {
+                list.Children.Add(new TextBlock { Text = "None yet.", Opacity = 0.6 });
+            }
+        }
+        p.Children.Add(list);
+        var name = new TextBox { PlaceholderText = "Name, for example GitHub", Width = 320, HorizontalAlignment = HorizontalAlignment.Left, Margin = new Thickness(0, 0, 0, 4) };
+        var url = new TextBox { PlaceholderText = "Sign-in page, for example https://github.com/login", Width = 320, HorizontalAlignment = HorizontalAlignment.Left, Margin = new Thickness(0, 0, 0, 4) };
+        var userName = new TextBox { PlaceholderText = "User name or email", Width = 320, HorizontalAlignment = HorizontalAlignment.Left, Margin = new Thickness(0, 0, 0, 4) };
+        var password = new PasswordBox { Width = 320, HorizontalAlignment = HorizontalAlignment.Left, Margin = new Thickness(0, 0, 0, 4) };
+        var problem = new TextBlock { Foreground = System.Windows.Media.Brushes.IndianRed, TextWrapping = TextWrapping.Wrap };
+        var add = new Button { Content = "Add sign-in", Margin = new Thickness(0, 4, 0, 0) };
+        add.Click += (_, _) =>
+        {
+            problem.Text = "";
+            if (!Uri.TryCreate(url.Text.Trim(), UriKind.Absolute, out var u) || u.Scheme != "https")
+            {
+                problem.Text = "The sign-in page must be an https address.";
+                return;
+            }
+            if (name.Text.Trim().Length == 0 || userName.Text.Trim().Length == 0 || password.Password.Length == 0)
+            {
+                problem.Text = "Fill in the name, user name and password.";
+                return;
+            }
+            var login = new WebLogin { Name = name.Text.Trim(), LoginUrl = u.ToString() };
+            _secrets.Set(login.SecretKey, userName.Text.Trim(), password.Password);
+            w.Logins.RemoveAll(l => l.SecretKey == login.SecretKey);
+            w.Logins.Add(login);
+            _core.Settings.Update(s => { s.Web.Logins.RemoveAll(l => l.SecretKey == login.SecretKey); s.Web.Logins.Add(login); });
+            name.Clear();
+            url.Clear();
+            userName.Clear();
+            password.Clear();
+            Fill();
+        };
+        p.Children.Add(name);
+        p.Children.Add(url);
+        p.Children.Add(userName);
+        p.Children.Add(new TextBlock { Text = "Password", Opacity = 0.7, FontSize = 12 });
+        p.Children.Add(password);
+        p.Children.Add(add);
+        p.Children.Add(problem);
+        Fill();
+        return p;
+    }
+
     private void FillModelLists()
     {
         var m = _draft.Model;
@@ -283,6 +392,7 @@ internal sealed class SettingsWindow : FluentWindow
             s.General = _draft.General;
             s.Voice = _draft.Voice;
             s.Model = _draft.Model;
+            s.Web = _draft.Web;
             s.PermissionOverrides = _draft.PermissionOverrides;
         });
         try

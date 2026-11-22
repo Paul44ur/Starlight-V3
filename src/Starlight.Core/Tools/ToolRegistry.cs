@@ -4,7 +4,12 @@ using Microsoft.Extensions.AI;
 
 namespace Starlight.Tools;
 
-public sealed record ToolDefinition(string Name, string Description, Permission DefaultPermission, TimeSpan Timeout, AIFunction Function, string Group, IReadOnlySet<string> AskForActions);
+public sealed record ToolDefinition(string Name, string Description, Permission DefaultPermission, TimeSpan Timeout, AIFunction Function, string Group, IReadOnlySet<string> AskForActions)
+{
+    public bool UntrustedOutput { get; init; }
+    public bool AskAfterUntrusted { get; init; }
+    public int MaxResultChars { get; init; } = 6000;
+}
 
 /// <summary>Collects the tools of all providers. The JSON schema for each comes from the method's parameters.</summary>
 public sealed class ToolRegistry
@@ -41,7 +46,12 @@ public sealed class ToolRegistry
             });
             _tools[attr.Name] = new ToolDefinition(attr.Name, description, attr.Permission,
                 TimeSpan.FromSeconds(attr.TimeoutSeconds), function, group,
-                new HashSet<string>(attr.AskForActions, StringComparer.OrdinalIgnoreCase));
+                new HashSet<string>(attr.AskForActions, StringComparer.OrdinalIgnoreCase))
+            {
+                UntrustedOutput = attr.UntrustedOutput,
+                AskAfterUntrusted = attr.AskAfterUntrusted,
+                MaxResultChars = attr.MaxResultChars,
+            };
         }
     }
 

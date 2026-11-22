@@ -10,7 +10,7 @@ namespace Starlight.Memory;
 /// <summary>The three memory tools (plan 5.7) and the prompt block with the facts that fit the request.</summary>
 public sealed class MemoryTools(MemoryStore store) : IToolProvider, IPromptContributor
 {
-    [Tool("memory_remember")]
+    [Tool("memory_remember", AskAfterUntrusted = true)]
     [Description("Remembers a lasting fact about the user or their world, when they tell you something worth keeping (\"my sister's birthday is 3 March\"). A fact on the same topic replaces the old one.")]
     public string Remember(
         [Description("The fact as one clear sentence, for example \"The user's sister Anna has her birthday on 3 March.\"")] string text,

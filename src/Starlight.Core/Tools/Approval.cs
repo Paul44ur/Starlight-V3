@@ -16,6 +16,18 @@ public sealed class DenyAllApprovals : IApprovalService
     public Task<ApprovalAnswer> RequestAsync(ApprovalRequest request, CancellationToken ct) => Task.FromResult(ApprovalAnswer.No);
 }
 
+/// <summary>Asks the user to type or say a short text, such as a two-factor code. Null means no answer.</summary>
+public interface IUserPrompt
+{
+    Task<string?> AskTextAsync(string title, string question, CancellationToken ct);
+}
+
+/// <summary>No user to ask (tests, eval, the console without a window).</summary>
+public sealed class NoUserPrompt : IUserPrompt
+{
+    public Task<string?> AskTextAsync(string title, string question, CancellationToken ct) => Task.FromResult<string?>(null);
+}
+
 /// <summary>Info about the tool call in progress, readable from inside a tool.</summary>
 public sealed record ToolCallContext(string TurnId, string Source, string ToolName)
 {
