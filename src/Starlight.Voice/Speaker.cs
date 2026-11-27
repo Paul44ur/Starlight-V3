@@ -150,11 +150,24 @@ public sealed class Speaker : IDisposable
         }
     }
 
+    private int _disposed;
+
     public void Dispose()
     {
-        _queue.CompleteAdding();
-        Stop();
-        _output.Stop();
+        if (Interlocked.Exchange(ref _disposed, 1) == 1)
+        {
+            return;
+        }
+        try
+        {
+            _queue.CompleteAdding();
+            Stop();
+            _output.Stop();
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or ObjectDisposedException or System.Runtime.InteropServices.COMException)
+        {
+            Log.Warning(ex, "Speech output did not stop cleanly");
+        }
         _output.Dispose();
         _tts.Dispose();
     }
@@ -163,6 +176,7 @@ public sealed class Speaker : IDisposable
     private sealed class FloatQueueProvider(WaveFormat format, EventHub events) : IWaveProvider
     {
         private readonly ConcurrentQueue<float[]> _chunks = new();
+        private readonly Lock _gate = new(); // Clear runs on another thread than the audio callback
         private float[]? _current;
         private int _offset;
         private DateTime _lastLevel;
@@ -175,11 +189,22 @@ public sealed class Speaker : IDisposable
 
         public void Clear()
         {
-            _chunks.Clear();
-            _current = null;
+            lock (_gate)
+            {
+                _chunks.Clear();
+                _current = null;
+            }
         }
 
         public int Read(Span<byte> buffer)
+        {
+            lock (_gate)
+            {
+                return ReadLocked(buffer);
+            }
+        }
+
+        private int ReadLocked(Span<byte> buffer)
         {
             var channels = WaveFormat.Channels;
             var floats = System.Runtime.InteropServices.MemoryMarshal.Cast<byte, float>(buffer);

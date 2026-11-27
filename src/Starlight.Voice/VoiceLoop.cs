@@ -25,8 +25,15 @@ public sealed class VoiceLoop : IDisposable
     private readonly SettingsStore _settings;
     private readonly IDisposable _deltaSub;
     private readonly IDisposable _killSub;
-    private SentenceSplitter? _splitter;
-    private string? _turnId;
+    /// <summary>The spoken turn whose answer is read aloud now. A turn that was cut off by a new one
+    /// (barge-in) finds it replaced and leaves it alone.</summary>
+    private sealed class SpokenTurn
+    {
+        public SentenceSplitter Splitter { get; } = new();
+        public string? TurnId { get; set; }
+    }
+
+    private SpokenTurn? _current;
     private Task? _running;
     private WakeWord? _wake;
     private Endpointer? _endpointer;
@@ -86,7 +93,19 @@ public sealed class VoiceLoop : IDisposable
     public void EnableWakeWord(WakeWord wake)
     {
         _wake = wake;
-        wake.Heard += () => Task.Run(WakeUp);
+        wake.Heard += () => Task.Run(() =>
+        {
+            try
+            {
+                WakeUp();
+            }
+            catch (Exception ex)
+            {
+                Log.Error(ex, "Listening after the wake phrase failed");
+                _events.Publish(new StateChanged(AssistantState.Idle));
+                ResumeWake();
+            }
+        });
         _mic.Samples += OnSamples;
         _mic.Open();
     }
@@ -136,13 +155,20 @@ public sealed class VoiceLoop : IDisposable
     /// <summary>The push-to-talk key went down.</summary>
     public void StartListening()
     {
+        // Push to talk while a hands-free listen runs: the key decides when it ends, not the pause detector.
+        if (Interlocked.Exchange(ref _endpointer, null) is { } ep)
+        {
+            ep.Dispose();
+        }
         if (_wake is not null)
         {
             _wake.Active = false;
         }
+        // Barge-in: the turn being spoken is cut off and must not speak its rest or its "cancelled" later.
+        _current = null;
         if (_speaker.IsSpeaking)
         {
-            _speaker.Stop(); // barge-in
+            _speaker.Stop();
         }
         if (_agent.Busy && ApprovalPending?.Invoke() != true)
         {
@@ -193,11 +219,17 @@ public sealed class VoiceLoop : IDisposable
                 ResumeWake();
                 return;
             }
-            _splitter = new SentenceSplitter();
+            var turn = new SpokenTurn();
+            _current = turn;
             var conversation = ConversationFor?.Invoke() ?? _fallback;
             var heardAt = sw.Elapsed;
             var outcome = await _agent.RunAsync(conversation, text, "voice");
-            if (_splitter?.Flush() is { } rest)
+            if (Interlocked.CompareExchange(ref _current, null, turn) != turn)
+            {
+                // A newer turn took over (barge-in): it speaks, this one stays quiet.
+                return;
+            }
+            if (turn.Splitter.Flush() is { } rest)
             {
                 Say(rest);
             }
@@ -205,8 +237,6 @@ public sealed class VoiceLoop : IDisposable
             {
                 Say(outcome.Answer); // failures are not streamed, so speak them here
             }
-            _splitter = null;
-            _turnId = null;
             Log.Information("Voice turn: heard after {Heard:0.00} s, done after {Total:0.00} s", heardAt.TotalSeconds, sw.Elapsed.TotalSeconds);
             if (_speaker.IsSpeaking)
             {
@@ -227,17 +257,20 @@ public sealed class VoiceLoop : IDisposable
 
     private void OnDelta(AnswerDelta d)
     {
-        var splitter = _splitter;
-        if (splitter is null)
+        var turn = _current;
+        if (turn is null)
         {
             return;
         }
-        _turnId ??= d.TurnId;
-        if (_turnId != d.TurnId)
+        lock (turn)
         {
-            return;
+            turn.TurnId ??= d.TurnId;
+            if (turn.TurnId != d.TurnId)
+            {
+                return;
+            }
         }
-        foreach (var sentence in splitter.Add(d.Delta))
+        foreach (var sentence in turn.Splitter.Add(d.Delta))
         {
             Say(sentence);
         }
