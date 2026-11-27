@@ -27,6 +27,7 @@ before claiming anything is finished, and check the code too.
 | 2026-11-22 | 7fb4006 | Game mode: a full-screen Direct3D program or a listed program stops the model and unloads whisper; turns asked meanwhile get "paused"; the model starts again when the game ends (2 checks on, 3 off). Settings > General | 3 new tests (debounce, listed programs, setting off, paused turns skip the model). 169 tests pass. The full-screen check: built, not run |
 | 2026-11-22 | cd47198 | Headless browser: Edge starts suspended inside the Job Object, so its first children cannot escape; every request a page makes (redirects, images, scripts) is checked against the public-web rule through the DevTools Fetch domain | 4 new tests (command-line quoting, start in the job, a redirect and an image to a blocked address never reach the server, the address check). The redirect test fails without the check. 173 tests pass. The suspended start on Windows: built, not run |
 | 2026-11-22 | 2b5726e | Sandbox: command line quoted by the same rules as the browser start; if the job cannot take Python, it is ended before it runs | Builds; 173 tests pass. Not run on the PC |
+| 2026-11-27 | 59f0b86..e87b87e | Fixes from the two-round code review (all 7 high findings and about 60 medium ones). Highlights: the saved model is no longer wiped when Settings opens; dangling tool calls are closed and call ids made unique; the trace and problem reports are masked; `app open` of a program file asks; "Always" is offered only where it can be stored safely; screen_look picture points map back to the screen; code blocks are never spoken and a spoken "always" must be a clear phrase; the headless browser connects only through a filter proxy on 127.0.0.1 that resolves each host once and connects to the checked address (closes DNS rebinding, covers WebSockets too); settings load the .bak when the file is broken and change a copy; `memory_forget` deletes one fact and its history; the model server stop cancels a load; downloads check a 416 against the real size; web timeouts, the DuckDuckGo bot page, one password submit per login; page text on deep and form-wrapped pages, meta charsets; scripts may not work on folders that hold protected ones or through links; SSH allow-list wildcards admit no options or ".."; damaged host-key pins stop SSH; no skill offers from turns with outside content; a cut-off voice turn stays quiet; microphone close cannot deadlock; kill-switch cleanups are time-boxed; the eval exits 1 below the gate | 253 tests pass in the container (85 new), including the filter proxy and a rebinding stand-in against real Chromium, a stop during a hanging model load, and settings recovery. The Windows-only parts of these fixes (approval window, ask card, overlay rebuild, voice loop, microphone, speaker, chat window, startup failure, mic recovery, OCR downscale, sandbox self-check markers): built, not run |
 
 ## In progress
 - P0/P1 on the PC: get llama-server (Vulkan) and 3-4 candidate models, run the eval as the model benchmark, then the P1 acceptance in the console ("open Notepad", Ctrl+Alt+J during `dev_wait 10`).
@@ -44,6 +45,8 @@ before claiming anything is finished, and check the code too.
 
 - Kokoro's English voices need espeak-ng data, which is GPL-3.0. It is data read by sherpa-onnx, not linked code, but it ships with Starlight. Is that fine, or should Starlight use a voice that needs no espeak data?
 
+- Review findings left for the user: should `web_read` ask once a turn has read outside content (it can carry data out in its address)? Should the build turn the switched-off analyzer rules back on (many warnings to fix)? Should `starlight-dev` use a separate data folder by default (it now says when it uses the real one)?
+
 ## Broken or untested
 - `JobObject` limits and the suspended start are Windows-only and untested on the PC (the command line and the plain start are tested).
 - `CrashHandler` and `Logging.Configure` have no tests yet.
@@ -53,7 +56,7 @@ before claiming anything is finished, and check the code too.
 - Kokoro voice names map to speaker numbers by an assumed order (Kokoro v1.0); unverified.
 - The installer (Velopack) is not packed yet; it needs the llama-server files from the PC.
 - `screen_find` has UI Automation and OCR, not the vision step yet.
-- The browser's address check resolves the host itself and Edge resolves it again, so a DNS trick with a very short lifetime could still slip through. WebSocket connections from a page are not checked.
+- The browser filter proxy is tested with Chromium in the container; with Edge on the PC: not run yet. The DevTools port is still open to other programs on the PC while the browser runs.
 - Game mode's full-screen check (Direct3D full screen only) and the model restart after a game: not run on the PC.
 - `web_login` finds forms by common field names; sites with unusual sign-in pages may fail. Untested on real sites.
 - The bundled Python (embeddable 3.12) is not in the build yet; `code_write` says it is missing until the installer or first start brings it.
