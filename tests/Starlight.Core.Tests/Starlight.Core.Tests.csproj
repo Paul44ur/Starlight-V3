@@ -31,6 +31,7 @@
     <Compile Include="..\..\src\Starlight.Voice\AudioMath.cs" Link="Linked\AudioMath.cs" />
     <Compile Include="..\..\src\Starlight.Voice\WakeTokens.cs" Link="Linked\WakeTokens.cs" />
     <Compile Include="..\..\src\Starlight.Overlay\OverlayGeometry.cs" Link="Linked\OverlayGeometry.cs" />
+    <Compile Include="..\..\src\Starlight.App\ModelFiles.cs" Link="Linked\ModelFiles.cs" />
     <None Include="..\..\src\Starlight.Eval\cases\*.json" Link="cases\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
     <None Include="Fakes\**" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>

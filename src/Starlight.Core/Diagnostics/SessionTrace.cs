@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 
 namespace Starlight.Diagnostics;
@@ -25,22 +26,64 @@ public sealed class SessionTrace
         Directory.CreateDirectory(dir);
     }
 
+    /// <summary>
+    /// Writes one event. Every string in <paramref name="data"/> goes through <see cref="SecretMasker"/>
+    /// first, because the trace ships in the diagnostics zip. A trace line never fails a turn.
+    /// </summary>
     public void Write(string kind, string? turnId, object? data = null)
     {
-        var entry = new TraceEntry(DateTimeOffset.Now, kind, turnId, data);
-        _recent.Enqueue(entry);
-        while (_recent.Count > RecentLimit && _recent.TryDequeue(out _)) { }
-        var line = JsonSerializer.Serialize(entry, Json);
-        lock (_gate)
+        try
         {
-            try
+            var entry = new TraceEntry(DateTimeOffset.Now, kind, turnId, MaskData(data));
+            _recent.Enqueue(entry);
+            while (_recent.Count > RecentLimit && _recent.TryDequeue(out _)) { }
+            var line = JsonSerializer.Serialize(entry, Json);
+            lock (_gate)
             {
                 File.AppendAllText(Path.Combine(_dir, $"trace-{DateTime.Now:yyyyMMdd}.jsonl"), line + Environment.NewLine);
             }
-            catch (IOException)
-            {
-                // A trace line is never worth failing a turn for.
-            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException or NotSupportedException or InvalidOperationException)
+        {
+            // A trace line is never worth failing a turn for.
+        }
+    }
+
+    /// <summary>Turns the data into JSON and masks every string value and every secret-looking field.</summary>
+    internal static JsonNode? MaskData(object? data)
+    {
+        if (data is null)
+        {
+            return null;
+        }
+        var node = data as JsonNode ?? JsonSerializer.SerializeToNode(data, Json);
+        return Mask(node);
+    }
+
+    private static readonly string[] SecretNames = ["password", "passwd", "secret", "token", "apikey", "api_key", "cookie"];
+
+    private static JsonNode? Mask(JsonNode? node)
+    {
+        switch (node)
+        {
+            case JsonObject o:
+                foreach (var (key, value) in o.ToList())
+                {
+                    o[key] = SecretNames.Any(w => key.Contains(w, StringComparison.OrdinalIgnoreCase)) && value is JsonValue
+                        ? JsonValue.Create("***")
+                        : Mask(value?.DeepClone());
+                }
+                return o;
+            case JsonArray a:
+                for (var i = 0; i < a.Count; i++)
+                {
+                    a[i] = Mask(a[i]?.DeepClone());
+                }
+                return a;
+            case JsonValue v when v.TryGetValue<string>(out var s):
+                return JsonValue.Create(SecretMasker.Mask(s));
+            default:
+                return node;
         }
     }
 
@@ -54,12 +97,18 @@ public sealed class SessionTrace
     /// <summary>Deletes trace files older than <paramref name="days"/>.</summary>
     public void Prune(int days = 30)
     {
-        foreach (var f in Directory.EnumerateFiles(_dir, "trace-*.jsonl"))
+        try
         {
-            if (File.GetLastWriteTime(f) < DateTime.Now.AddDays(-days))
+            foreach (var f in Directory.EnumerateFiles(_dir, "trace-*.jsonl"))
             {
-                try { File.Delete(f); } catch (IOException) { }
+                if (File.GetLastWriteTime(f) < DateTime.Now.AddDays(-days))
+                {
+                    try { File.Delete(f); } catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
+                }
             }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
         }
     }
 }

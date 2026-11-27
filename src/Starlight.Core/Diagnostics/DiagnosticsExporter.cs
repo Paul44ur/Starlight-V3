@@ -10,7 +10,7 @@ public sealed class DiagnosticsExporter(StarlightPaths paths, Func<string> setti
     public string Export(string targetDir, int traceDays = 7)
     {
         Directory.CreateDirectory(targetDir);
-        var zipPath = Path.Combine(targetDir, $"Starlight-diagnostics-{DateTime.Now:yyyyMMdd-HHmm}.zip");
+        var zipPath = Path.Combine(targetDir, $"Starlight-diagnostics-{DateTime.Now:yyyyMMdd-HHmmss}.zip");
         Log.Information("Exporting diagnostics to {Zip}", zipPath);
         using var zip = ZipFile.Open(zipPath, ZipArchiveMode.Create);
         AddFolder(zip, paths.LogsDir, "logs", null);
@@ -22,7 +22,8 @@ public sealed class DiagnosticsExporter(StarlightPaths paths, Func<string> setti
         AddText(zip, "README.txt",
             $"Starlight {Logging.Version} diagnostics, made {DateTimeOffset.Now:O}.\r\n" +
             "logs/errors-*.log holds warnings and errors; logs/starlight-*.log everything.\r\n" +
-            "crashes/ holds one file per crash; reports/ what you reported; trace/ each turn step by step.\r\n");
+            "crashes/ holds one file per crash; reports/ what you reported; trace/ each turn step by step.\r\n" +
+            "The trace holds what you said and what Starlight answered. Passwords, keys and tokens are masked.\r\n");
         return zipPath;
     }
 

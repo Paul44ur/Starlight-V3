@@ -8,7 +8,8 @@ public sealed class ProblemReports(StarlightPaths paths, SessionTrace trace)
 {
     public string Save(string description)
     {
-        var file = Path.Combine(paths.ReportsDir, $"report-{DateTime.Now:yyyyMMdd-HHmmss}.json");
+        description = SecretMasker.Mask(description);
+        var file = Path.Combine(paths.ReportsDir, $"report-{DateTime.Now:yyyyMMdd-HHmmss-fff}.json");
         var report = new
         {
             time = DateTimeOffset.Now,

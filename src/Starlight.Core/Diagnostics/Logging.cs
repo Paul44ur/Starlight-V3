@@ -44,6 +44,9 @@ public sealed partial class SecretMasker : ILogEventEnricher
     public static string Mask(string text)
     {
         text = PairPattern().Replace(text, m => m.Groups[1].Value + "***");
+        text = BearerPattern().Replace(text, m => m.Groups[1].Value + "***");
+        text = JwtPattern().Replace(text, "***");
+        text = PemPattern().Replace(text, "***");
         return KeyPattern().Replace(text, "***");
     }
 
@@ -52,6 +55,15 @@ public sealed partial class SecretMasker : ILogEventEnricher
 
     [System.Text.RegularExpressions.GeneratedRegex(@"\b(?:sk-[A-Za-z0-9_-]{16,}|gh[pousr]_[A-Za-z0-9]{20,}|xox[abp]-[A-Za-z0-9-]{10,}|AKIA[0-9A-Z]{16})\b")]
     private static partial System.Text.RegularExpressions.Regex KeyPattern();
+
+    [System.Text.RegularExpressions.GeneratedRegex(@"((?:Authorization\s*[:=]\s*)?(?:Bearer|Basic)\s+)[A-Za-z0-9._~+/=-]{8,}", System.Text.RegularExpressions.RegexOptions.IgnoreCase)]
+    private static partial System.Text.RegularExpressions.Regex BearerPattern();
+
+    [System.Text.RegularExpressions.GeneratedRegex(@"\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\b")]
+    private static partial System.Text.RegularExpressions.Regex JwtPattern();
+
+    [System.Text.RegularExpressions.GeneratedRegex(@"-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----")]
+    private static partial System.Text.RegularExpressions.Regex PemPattern();
 
     public void Enrich(LogEvent logEvent, ILogEventPropertyFactory propertyFactory)
     {

@@ -207,9 +207,9 @@ internal sealed class SettingsWindow : FluentWindow
         folderRow.Children.Add(folder);
         folderRow.Children.Add(browse);
         Row(p, "Models folder", folderRow);
-        _modelFile.SelectionChanged += (_, _) => m.ChatModelFile = _modelFile.SelectedItem as string ?? "";
+        _modelFile.SelectionChanged += (_, _) => { if (!_filling) { m.ChatModelFile = _modelFile.SelectedItem as string ?? ""; } };
         Row(p, "Chat model", _modelFile);
-        _projector.SelectionChanged += (_, _) => m.VisionProjectorFile = _projector.SelectedItem is string s && s != "(none)" ? s : "";
+        _projector.SelectionChanged += (_, _) => { if (!_filling) { m.VisionProjectorFile = _projector.SelectedItem is string s && s != ModelFiles.None ? s : ""; } };
         Row(p, "Vision projector", _projector, "The mmproj file that lets the model see screenshots. Optional.");
         Row(p, "Context size (tokens)", Number(m.ContextSize, v => m.ContextSize = v), "How much of a conversation the model keeps in mind. 32768 fits a 14B model in 16 GB.");
         Row(p, "GPU layers", Number(m.GpuLayers, v => m.GpuLayers = v), "99 puts the whole model on the graphics card.");
@@ -466,20 +466,40 @@ internal sealed class SettingsWindow : FluentWindow
         return p;
     }
 
+    private bool _filling;
+
     private void FillModelLists()
     {
         var m = _draft.Model;
-        var files = Directory.Exists(m.ModelsDir)
-            ? Directory.GetFiles(m.ModelsDir, "*.gguf").Select(f => Path.GetFileName(f)!).Order(StringComparer.OrdinalIgnoreCase).ToList()
-            : [];
-        var models = files.Where(f => !f.Contains("mmproj", StringComparison.OrdinalIgnoreCase)).ToList();
-        var projectors = files.Where(f => f.Contains("mmproj", StringComparison.OrdinalIgnoreCase)).Prepend("(none)").ToList();
+        IEnumerable<string> files = [];
+        try
+        {
+            if (Directory.Exists(m.ModelsDir))
+            {
+                files = Directory.GetFiles(m.ModelsDir, "*.gguf").Select(f => Path.GetFileName(f)!);
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException)
+        {
+            files = [];
+        }
         var chosenModel = m.ChatModelFile;
-        var chosenProjector = string.IsNullOrEmpty(m.VisionProjectorFile) ? "(none)" : m.VisionProjectorFile;
-        _modelFile.ItemsSource = models;
-        _modelFile.SelectedItem = models.Contains(chosenModel) ? chosenModel : null;
-        _projector.ItemsSource = projectors;
-        _projector.SelectedItem = projectors.Contains(chosenProjector) ? chosenProjector : "(none)";
+        var chosenProjector = string.IsNullOrEmpty(m.VisionProjectorFile) ? ModelFiles.None : m.VisionProjectorFile;
+        var (models, projectors) = ModelFiles.Lists(files, chosenModel, chosenProjector);
+        // Replacing ItemsSource fires SelectionChanged with nothing selected; without this guard
+        // that wrote "" into the draft and the chosen model was lost.
+        _filling = true;
+        try
+        {
+            _modelFile.ItemsSource = models;
+            _modelFile.SelectedItem = models.FirstOrDefault(x => x.Equals(chosenModel, StringComparison.OrdinalIgnoreCase));
+            _projector.ItemsSource = projectors;
+            _projector.SelectedItem = projectors.FirstOrDefault(x => x.Equals(chosenProjector, StringComparison.OrdinalIgnoreCase)) ?? ModelFiles.None;
+        }
+        finally
+        {
+            _filling = false;
+        }
     }
 
     private UIElement Permissions()
