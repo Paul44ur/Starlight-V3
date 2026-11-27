@@ -13,8 +13,12 @@ internal sealed class AskCard : Window
 
     public const double CardWidth = 380;
 
+    private readonly System.Windows.Controls.Button _always;
+    private bool _canRemember = true;
+
     public AskCard()
     {
+        _always = Button("Always", ApprovalAnswer.Always, Color.FromArgb(60, 255, 255, 255));
         WindowStyle = WindowStyle.None;
         AllowsTransparency = true;
         Background = Brushes.Transparent;
@@ -27,7 +31,7 @@ internal sealed class AskCard : Window
         Title = "Starlight asks";
 
         var buttons = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right };
-        buttons.Children.Add(Button("Always", ApprovalAnswer.Always, Color.FromArgb(60, 255, 255, 255)));
+        buttons.Children.Add(_always);
         buttons.Children.Add(Button("No", ApprovalAnswer.No, Color.FromArgb(60, 255, 255, 255)));
         buttons.Children.Add(Button("Yes", ApprovalAnswer.Yes, Color.FromRgb(0xFF, 0xB5, 0x47), dark: true));
         var panel = new StackPanel();
@@ -58,22 +62,44 @@ internal sealed class AskCard : Window
         return b;
     }
 
-    public Task<ApprovalAnswer> AskAsync(string question)
+    /// <summary>Opens the card. The caller places it; call <see cref="Measure"/> first for its height.</summary>
+    public Task<ApprovalAnswer> AskAsync(string question, bool canRemember = true)
     {
         _answer?.TrySetResult(ApprovalAnswer.No);
         _answer = new TaskCompletionSource<ApprovalAnswer>();
         _question.Text = question;
+        _canRemember = canRemember;
+        _always.Visibility = canRemember ? Visibility.Visible : Visibility.Collapsed;
         Show();
         return _answer.Task;
     }
 
-    /// <summary>Answers the open question (a click here, or "yes"/"no" by voice).</summary>
-    public bool Answer(ApprovalAnswer answer)
+    /// <summary>The height the card needs for <paramref name="question"/>, before it is shown.</summary>
+    public double HeightFor(string question, bool canRemember)
+    {
+        _question.Text = question;
+        _always.Visibility = canRemember ? Visibility.Visible : Visibility.Collapsed;
+        Measure(new Size(CardWidth, double.PositiveInfinity));
+        return DesiredSize.Height;
+    }
+
+    /// <summary>Answers the open question (a click here, or "yes"/"no" by voice). With
+    /// <paramref name="only"/>, answers only if that question is still the open one, so a late
+    /// cancel never closes a newer card.</summary>
+    public bool Answer(ApprovalAnswer answer, Task<ApprovalAnswer>? only = null)
     {
         var open = _answer;
+        if (open is null || (only is not null && open.Task != only))
+        {
+            return false;
+        }
+        if (answer == ApprovalAnswer.Always && !_canRemember)
+        {
+            answer = ApprovalAnswer.Yes;
+        }
         _answer = null;
         Hide();
-        return open?.TrySetResult(answer) ?? false;
+        return open.TrySetResult(answer);
     }
 
     public bool IsAsking => _answer is not null;

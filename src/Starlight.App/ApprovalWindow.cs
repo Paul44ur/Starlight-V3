@@ -28,23 +28,32 @@ internal sealed class WindowApprovals : IApprovalService
         };
         var panel = new StackPanel { Margin = new Thickness(20) };
         panel.Children.Add(new TextBlock { Text = "May I do this?", FontSize = 16, FontWeight = FontWeights.SemiBold, Margin = new Thickness(0, 0, 0, 8) });
-        panel.Children.Add(new TextBlock { Text = request.Question, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 16) });
+        panel.Children.Add(new TextBlock { Text = request.Question, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 4) });
+        panel.Children.Add(new TextBlock { Text = $"Tool: {request.Tool} · asked from: {request.Source}", Opacity = 0.7, FontSize = 12, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 16) });
         var buttons = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right };
-        void Add(string text, ApprovalAnswer answer, ControlAppearance look)
+        Button Add(string text, ApprovalAnswer answer, ControlAppearance look)
         {
             var b = new Button { Content = text, Appearance = look, Margin = new Thickness(8, 0, 0, 0), MinWidth = 80 };
             b.Click += (_, _) => { done.TrySetResult(answer); window.Close(); };
             buttons.Children.Add(b);
+            return b;
         }
-        Add("Always allow", ApprovalAnswer.Always, ControlAppearance.Secondary);
-        Add("No", ApprovalAnswer.No, ControlAppearance.Secondary);
+        // No comes first and has the focus, so a stray Enter or Space never grants anything.
+        var no = Add("No", ApprovalAnswer.No, ControlAppearance.Secondary);
+        no.IsDefault = true;
+        no.IsCancel = true;
         Add("Yes", ApprovalAnswer.Yes, ControlAppearance.Primary);
+        if (request.CanRemember)
+        {
+            Add("Always allow", ApprovalAnswer.Always, ControlAppearance.Secondary);
+        }
         panel.Children.Add(buttons);
         window.Content = panel;
-        window.Closed += (_, _) => done.TrySetResult(ApprovalAnswer.No);
-        ct.Register(() => window.Dispatcher.InvokeAsync(window.Close));
+        var registration = ct.Register(() => window.Dispatcher.InvokeAsync(() => { if (window.IsLoaded) { window.Close(); } }));
+        window.Closed += (_, _) => { registration.Dispose(); done.TrySetResult(ApprovalAnswer.No); };
         window.Show();
         window.Activate();
+        no.Focus();
         return done.Task;
     }
 }

@@ -4,9 +4,23 @@ using Starlight.Tools;
 
 namespace Starlight.Tools.Desktop;
 
-/// <summary>The one tool for programs (plan 5.5): open, focus, close, list. Closing asks first.</summary>
-public sealed class AppTools(AppCatalog catalog) : IToolProvider
+/// <summary>The one tool for programs (plan 5.5): open, focus, close, list. Closing asks first,
+/// and so does opening a file that can run code.</summary>
+public sealed class AppTools(AppCatalog catalog) : IToolProvider, IPermissionHint
 {
+    /// <summary>Opening a path to a script, installer or program asks the user (the model may have
+    /// been told to by a web page). Programs from the Start menu still open without a question.</summary>
+    public Permission? PermissionFor(string tool, IDictionary<string, object?> arguments)
+    {
+        if (tool != "app" || !arguments.TryGetValue("action", out var a) || !ToolDispatcher.ArgumentText(a).Trim().Equals("open", StringComparison.OrdinalIgnoreCase))
+        {
+            return null;
+        }
+        var name = arguments.TryGetValue("name", out var n) ? ToolDispatcher.ArgumentText(n) : "";
+        var path = Environment.ExpandEnvironmentVariables(name.Trim().Trim('"'));
+        return path.Length > 0 && File.Exists(path) && AppMatcher.IsRunnable(path) ? Permission.Ask : null;
+    }
+
     [Tool("app", AskForActions = ["close"], TimeoutSeconds = 20)]
     [Description("Opens, focuses, closes or lists programs and windows. open starts a program or opens a file or folder with its default program; focus brings an open window to the front; close closes a window; list shows the open windows.")]
     public async Task<string> App(
@@ -54,12 +68,12 @@ public sealed class AppTools(AppCatalog catalog) : IToolProvider
         var entry = AppMatcher.Builtin(name);
         if (entry is null)
         {
-            var hits = AppMatcher.Find(name, catalog.Apps);
-            if (hits.Count == 0)
+            var (pick, candidates) = AppMatcher.Choose(name, catalog.Apps);
+            if (candidates.Count == 0)
             {
                 throw new ToolException($"I can't find a program called '{name}'. Ask the user for its exact name.");
             }
-            entry = hits[0]; // the closest match; Find sorts the best first
+            entry = pick ?? throw new ToolException($"Several programs could be '{name}': {string.Join(", ", candidates.Select(c => c.Name))}. Ask the user which one.");
         }
         var psi = entry.Kind == AppKind.StoreApp
             ? new ProcessStartInfo("explorer.exe", $"shell:AppsFolder\\{entry.Target}") { UseShellExecute = true }
@@ -90,19 +104,16 @@ public sealed class AppTools(AppCatalog catalog) : IToolProvider
         }
     }
 
-    private static WindowInfo FindWindow(string name)
+    private static WindowInfo FindWindow(string name, bool unique)
     {
         var windows = Win32.TopLevelWindows();
-        var wanted = AppMatcher.Normalize(name);
-        var hit = windows.FirstOrDefault(w => AppMatcher.Normalize(w.Process) == wanted)
-            ?? windows.FirstOrDefault(w => AppMatcher.Normalize(w.Title).Contains(wanted, StringComparison.Ordinal))
-            ?? windows.FirstOrDefault(w => AppMatcher.Normalize(w.Process).Contains(wanted, StringComparison.Ordinal));
-        return hit ?? throw new ToolException($"No open window matches '{name}'. Use action list to see the open windows.");
+        var i = AppMatcher.PickWindow(name, windows.Select(w => (w.Title, w.Process)).ToList(), unique, out var problem);
+        return i >= 0 ? windows[i] : throw new ToolException(problem!);
     }
 
     private static string Focus(string name)
     {
-        var w = FindWindow(name);
+        var w = FindWindow(name, unique: false);
         return Win32.Focus(w.Handle) || Win32.GetForegroundWindow() == w.Handle
             ? $"\"{w.Title}\" is in front now."
             : $"Windows did not let me bring \"{w.Title}\" to the front.";
@@ -110,7 +121,7 @@ public sealed class AppTools(AppCatalog catalog) : IToolProvider
 
     private static string Close(string name)
     {
-        var w = FindWindow(name);
+        var w = FindWindow(name, unique: true);
         Win32.PostMessage(w.Handle, Win32.WM_CLOSE, 0, 0);
         return $"Asked \"{w.Title}\" to close. If it has unsaved work, it will ask the user.";
     }

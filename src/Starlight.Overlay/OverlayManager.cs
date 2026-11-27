@@ -32,6 +32,7 @@ public sealed partial class OverlayManager : IApprovalService, IDisposable
     private List<MonitorInfo> _monitors = [];
     private string? _answerTurn;
     private bool _hiddenForFullScreen;
+    private bool _controlActive;
 
     public OverlayManager(EventHub events, SettingsStore settings, ContextMenu orbMenu)
     {
@@ -52,12 +53,13 @@ public sealed partial class OverlayManager : IApprovalService, IDisposable
         _subs.Add(events.Subscribe<AnswerCompleted>(e => OnUi(() => CompleteAnswer(e))));
         _subs.Add(events.Subscribe<PointAt>(e => OnUi(() => Point(e))));
         _subs.Add(events.Subscribe<ClearPointer>(_ => OnUi(ClearPointer)));
-        _subs.Add(events.Subscribe<ControlActive>(e => OnUi(() => _layers.ForEach(l => l.ShowControlFrame(e.Active)))));
+        _subs.Add(events.Subscribe<ControlActive>(e => OnUi(() => { _controlActive = e.Active; _layers.ForEach(l => l.ShowControlFrame(e.Active)); })));
         _subs.Add(events.Subscribe<KillSwitchChanged>(e => OnUi(() =>
         {
             if (e.Engaged)
             {
                 ClearPointer();
+                _controlActive = false;
                 _layers.ForEach(l => l.ShowControlFrame(false));
                 _ask.Answer(ApprovalAnswer.No);
             }
@@ -76,6 +78,8 @@ public sealed partial class OverlayManager : IApprovalService, IDisposable
 
     private void Build()
     {
+        var captionText = _captionText?.Text;
+        var captionShown = _caption is not null && _caption.Opacity > 0;
         foreach (var l in _layers)
         {
             l.Close();
@@ -102,6 +106,20 @@ public sealed partial class OverlayManager : IApprovalService, IDisposable
         _orb.Show();
         Native.Place(_orb, cx - orbPx / 2, cy - orbPx / 2, orbPx, orbPx);
         BuildCaption();
+        // A rebuild (display change) must keep what was on screen and the full-screen hiding.
+        _layers.ForEach(l => l.ShowControlFrame(_controlActive));
+        if (captionShown && captionText is not null && _captionText is not null && _caption is not null)
+        {
+            _captionText.Text = captionText;
+            _caption.Opacity = 1;
+            _captionTimer.Stop();
+            _captionTimer.Start();
+        }
+        if (_hiddenForFullScreen)
+        {
+            _orb.Visibility = Visibility.Hidden;
+            _layers.ForEach(l => l.Visibility = Visibility.Hidden);
+        }
     }
 
     private (int X, int Y) OrbCenter() => OverlayGeometry.OrbCenter(_monitors, OrbWindow.WindowSize, 0);
@@ -171,6 +189,10 @@ public sealed partial class OverlayManager : IApprovalService, IDisposable
 
     private void CompleteAnswer(AnswerCompleted e)
     {
+        if (e.TurnId != _answerTurn)
+        {
+            return;
+        }
         if (e.Failed && _captionText is not null)
         {
             ShowCaption(e.Text, user: false);
@@ -202,11 +224,12 @@ public sealed partial class OverlayManager : IApprovalService, IDisposable
             var (cx, cy) = OrbCenter();
             var primary = _monitors.FirstOrDefault(m => m.Primary) ?? _monitors.FirstOrDefault();
             var scale = primary?.Scale ?? 1;
-            var task = _ask.AskAsync(request.Question);
             var w = (int)(AskCard.CardWidth * scale);
-            var h = (int)(Math.Max(_ask.ActualHeight, 130) * scale);
+            var h = (int)(Math.Max(_ask.HeightFor(request.Question, request.CanRemember), 100) * scale);
+            var task = _ask.AskAsync(request.Question, request.CanRemember);
             Native.Place(_ask, cx - w / 2, cy + (int)(OrbWindow.WindowSize / 2 * scale) + (int)(70 * scale), w, h);
-            using var reg = ct.Register(() => _ui.InvokeAsync(() => _ask.Answer(ApprovalAnswer.No)));
+            Native.BringToTop(_ask);
+            using var reg = ct.Register(() => _ui.InvokeAsync(() => _ask.Answer(ApprovalAnswer.No, task)));
             return await task;
         }).Task.Unwrap();
 
@@ -231,6 +254,12 @@ public sealed partial class OverlayManager : IApprovalService, IDisposable
             Native.BringToTop(_orb);
             _layers.ForEach(Native.BringToTop);
         }
+        // An open question must stay on top of the full-monitor layers, even over a full-screen app:
+        // the turn waits for it.
+        if (_ask.IsAsking)
+        {
+            Native.BringToTop(_ask);
+        }
     }
 
     [System.Runtime.InteropServices.LibraryImport("shell32.dll")]
@@ -253,6 +282,8 @@ public sealed partial class OverlayManager : IApprovalService, IDisposable
         SystemEvents.DisplaySettingsChanged -= OnDisplayChanged;
         _subs.ForEach(s => s.Dispose());
         _keepOnTop.Stop();
+        _pointerTimer.Stop();
+        _captionTimer.Stop();
         _ui.Invoke(() =>
         {
             _orb.Close();

@@ -1,6 +1,8 @@
 namespace Starlight.Tools;
 
-public sealed record ApprovalRequest(string Tool, string Question, string ArgumentsJson, string Source);
+/// <summary>A question to the user. <paramref name="CanRemember"/> is false when "Always" would not be
+/// stored (only some arguments ask, or outside text is in the turn), so the button is not offered.</summary>
+public sealed record ApprovalRequest(string Tool, string Question, string ArgumentsJson, string Source, bool CanRemember = true);
 
 public enum ApprovalAnswer { No, Yes, Always }
 

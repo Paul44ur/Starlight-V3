@@ -26,6 +26,7 @@ internal sealed class OrbWindow : Window
     private readonly RadialGradientBrush _glowBrush;
     private AssistantState _state = AssistantState.Idle;
     private double _level, _shownLevel;
+    private Color _drawn;
     private Color _color, _target;
     private bool _animating;
     private DateTime _start = DateTime.UtcNow;
@@ -79,6 +80,11 @@ internal sealed class OrbWindow : Window
     public void SetState(AssistantState state)
     {
         _state = state;
+        if (state is not (AssistantState.Listening or AssistantState.Speaking))
+        {
+            // The level only comes while recording or speaking; a stale one kept the frame loop running.
+            _level = 0;
+        }
         _target = ColorFor(state);
         Opacity = state == AssistantState.Idle ? 0.55 : 1.0;
         StartAnimating();
@@ -128,7 +134,11 @@ internal sealed class OrbWindow : Window
         }
         _scale.ScaleX = _scale.ScaleY = scale;
         _ring.Opacity += (ring - _ring.Opacity) * 0.15;
-        Recolor();
+        if (_color != _drawn)
+        {
+            Recolor();
+            _drawn = _color;
+        }
 
         // Back at rest: stop drawing frames (0 fps when idle, plan 5.4).
         var settled = _state is AssistantState.Idle or AssistantState.Paused or AssistantState.Killed
@@ -139,7 +149,7 @@ internal sealed class OrbWindow : Window
             _animating = false;
             CompositionTarget.Rendering -= OnFrame;
         }
-        if (_state is AssistantState.Idle && _level > 0)
+        if (_state is not (AssistantState.Listening or AssistantState.Speaking) && _level > 0)
         {
             _level = 0;
         }

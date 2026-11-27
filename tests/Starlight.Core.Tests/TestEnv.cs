@@ -43,10 +43,12 @@ internal sealed class TestEnv : IDisposable
 internal sealed class FixedApprovals(ApprovalAnswer answer) : IApprovalService
 {
     public int Asked { get; private set; }
+    public ApprovalRequest? Last { get; private set; }
 
     public Task<ApprovalAnswer> RequestAsync(ApprovalRequest request, CancellationToken ct)
     {
         Asked++;
+        Last = request;
         return Task.FromResult(answer);
     }
 }
