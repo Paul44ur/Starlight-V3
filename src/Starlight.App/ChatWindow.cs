@@ -175,6 +175,8 @@ internal sealed class ChatWindow : FluentWindow
         _conversation = c;
         _view.Content = _chatView;
         Render();
+        // Cleared first: after "New conversation" the old entry must be clickable again.
+        _list.SelectedItem = null;
         foreach (ListBoxItem item in _list.Items)
         {
             if (item.Tag is ConversationInfo info && info.Id == c.Id)
@@ -272,7 +274,8 @@ internal sealed class ChatWindow : FluentWindow
         {
             return;
         }
-        var results = _conversation.Messages.SelectMany(m => m.Contents).OfType<FunctionResultContent>().ToDictionary(r => r.CallId, r => r.Result?.ToString() ?? "");
+        var results = _conversation.Messages.SelectMany(m => m.Contents).OfType<FunctionResultContent>()
+            .GroupBy(r => r.CallId ?? "").ToDictionary(g => g.Key, g => g.Last().Result?.ToString() ?? "");
         foreach (var m in _conversation.Messages)
         {
             if (m.Role == ChatRole.User)
@@ -288,7 +291,7 @@ internal sealed class ChatWindow : FluentWindow
             {
                 foreach (var call in m.Contents.OfType<FunctionCallContent>())
                 {
-                    AddToolStep(call.Name, JsonSerializer.Serialize(call.Arguments), results.GetValueOrDefault(call.CallId));
+                    AddToolStep(call.Name, JsonSerializer.Serialize(call.Arguments), results.GetValueOrDefault(call.CallId ?? ""));
                 }
                 if (!string.IsNullOrWhiteSpace(m.Text) && m.Text != "Understood.")
                 {
@@ -496,11 +499,35 @@ internal sealed class ChatWindow : FluentWindow
                     continue;
                 }
                 var mime = ext switch { ".jpg" or ".jpeg" => "image/jpeg", ".webp" => "image/webp", ".bmp" => "image/bmp", ".gif" => "image/gif", _ => "image/png" };
-                Chip(name, new DataContent(File.ReadAllBytes(file), mime));
+                try
+                {
+                    if (new FileInfo(file).Length > MaxPictureAttachment)
+                    {
+                        Chip($"{name}: pictures can be up to 10 MB", null);
+                        continue;
+                    }
+                    Chip(name, new DataContent(File.ReadAllBytes(file), mime));
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                {
+                    Chip($"{name}: could not be read ({ex.Message})", null);
+                }
             }
-            else if (TextExtensions.Contains(ext) && new FileInfo(file).Length <= MaxTextAttachment)
+            else if (TextExtensions.Contains(ext))
             {
-                Chip(name, new TextContent(File.ReadAllText(file)));
+                try
+                {
+                    if (new FileInfo(file).Length > MaxTextAttachment)
+                    {
+                        Chip($"{name}: text files can be up to 100 KB", null);
+                        continue;
+                    }
+                    Chip(name, new TextContent(File.ReadAllText(file)));
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                {
+                    Chip($"{name}: could not be read ({ex.Message})", null);
+                }
             }
             else
             {
@@ -508,6 +535,8 @@ internal sealed class ChatWindow : FluentWindow
             }
         }
     }
+
+    private const long MaxPictureAttachment = 10 * 1024 * 1024;
 
     private void Chip(string label, AIContent? content)
     {

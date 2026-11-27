@@ -14,8 +14,20 @@ public partial class App : Application
         base.OnStartup(e);
         ApplicationThemeManager.ApplySystemTheme();
         DispatcherUnhandledException += OnDispatcherException;
-        _shell = new Shell(this);
-        await _shell.StartAsync();
+        try
+        {
+            _shell = new Shell(this);
+            await _shell.StartAsync();
+        }
+        catch (Exception ex)
+        {
+            // Without this the process would stay alive with no tray icon and no window.
+            CrashHandler.Record(ex, "startup", terminating: true);
+            MessageBox.Show("Starlight could not start: " + ex.Message + "\n\nThe details are in the error log.", "Starlight", MessageBoxButton.OK, MessageBoxImage.Error);
+            _shell?.Dispose();
+            _shell = null;
+            Shutdown(1);
+        }
     }
 
     private void OnDispatcherException(object sender, DispatcherUnhandledExceptionEventArgs e)

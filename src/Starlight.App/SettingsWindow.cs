@@ -555,14 +555,17 @@ internal sealed class SettingsWindow : FluentWindow
         var modelChanged = before.ModelsDir != _draft.Model.ModelsDir || before.ChatModelFile != _draft.Model.ChatModelFile
             || before.VisionProjectorFile != _draft.Model.VisionProjectorFile || before.ContextSize != _draft.Model.ContextSize
             || before.GpuLayers != _draft.Model.GpuLayers || before.ExtraServerArgs != _draft.Model.ExtraServerArgs;
+        // A copy: the window keeps editing its draft, which must not change the live settings before the next Save
+        // (and the next Save must still see the model change).
+        var copy = JsonSerializer.Deserialize<AppSettings>(JsonSerializer.Serialize(_draft, SettingsJson), SettingsJson)!;
         _core.Settings.Update(s =>
         {
-            s.General = _draft.General;
-            s.Voice = _draft.Voice;
-            s.Model = _draft.Model;
-            s.Web = _draft.Web;
-            s.Servers = _draft.Servers;
-            s.PermissionOverrides = _draft.PermissionOverrides;
+            s.General = copy.General;
+            s.Voice = copy.Voice;
+            s.Model = copy.Model;
+            s.Web = copy.Web;
+            s.Servers = copy.Servers;
+            s.PermissionOverrides = copy.PermissionOverrides;
         });
         try
         {

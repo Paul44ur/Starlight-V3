@@ -130,6 +130,11 @@ internal sealed class Shell : IDisposable
         {
             _tray.ShowNotification("Starlight", ex.Message);
         }
+        catch (Exception ex)
+        {
+            Log.Error(ex, "The model could not start");
+            _tray.ShowNotification("Starlight", "The model could not start. It's in the error log.");
+        }
     }
 
     private ContextMenu BuildMenu()
@@ -250,7 +255,17 @@ internal sealed class Shell : IDisposable
         {
             return;
         }
-        _voice.StartListening();
+        try
+        {
+            _voice.StartListening();
+        }
+        catch (Exception ex)
+        {
+            Interlocked.Exchange(ref _pttHeld, 0);
+            Log.Error(ex, "Push to talk could not start listening");
+            _core.Events.Publish(new Notice("Listening could not start. It's in the error log.", NoticeLevel.Error));
+            return;
+        }
         var (_, key) = HotkeyParser.Parse(_core.Settings.Current.Voice.PushToTalkHotkey);
         _ = Task.Run(async () =>
         {
@@ -288,6 +303,17 @@ internal sealed class Shell : IDisposable
             () => System.Diagnostics.Process.GetProcesses().Select(p => { using (p) { return p.ProcessName; } }).ToHashSet(StringComparer.OrdinalIgnoreCase));
         mode.Changed += async (on, game) =>
         {
+            try
+            {
+                await OnGameModeAsync(on, game);
+            }
+            catch (Exception ex)
+            {
+                Log.Error(ex, "Game mode switch failed");
+            }
+        };
+        async Task OnGameModeAsync(bool on, string game)
+        {
             if (on)
             {
                 _core.Agent!.PausedReason = $"I'm paused while {game} runs, so the graphics card is free for it. I'll be back when it ends.";
@@ -318,7 +344,7 @@ internal sealed class Shell : IDisposable
                     }
                 }
             }
-        };
+        }
         var busy = 0;
         _gameTimer = new System.Threading.Timer(async _ =>
         {
@@ -329,6 +355,11 @@ internal sealed class Shell : IDisposable
             try
             {
                 await mode.TickAsync();
+            }
+            catch (Exception ex)
+            {
+                // A timer callback that throws would end the app.
+                Log.Error(ex, "Game mode check failed");
             }
             finally
             {

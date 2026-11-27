@@ -149,6 +149,8 @@ internal static class MarkdownView
                 if (Uri.TryCreate(link.Url, UriKind.Absolute, out var uri) && uri.Scheme is "http" or "https")
                 {
                     h.NavigateUri = uri;
+                    // The text of a link can say anything: the real address is shown on hover.
+                    h.ToolTip = uri.AbsoluteUri;
                     h.RequestNavigate += (_, e) => System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(e.Uri.AbsoluteUri) { UseShellExecute = true })?.Dispose();
                 }
                 return h;
