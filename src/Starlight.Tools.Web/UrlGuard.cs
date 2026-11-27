@@ -82,25 +82,44 @@ public static class UrlGuard
     }
 
     /// <summary>A connect step for <see cref="SocketsHttpHandler"/> that refuses non-public addresses.</summary>
-    public static async ValueTask<Stream> ConnectPublicAsync(SocketsHttpConnectionContext context, CancellationToken ct)
+    public static ValueTask<Stream> ConnectPublicAsync(SocketsHttpConnectionContext context, CancellationToken ct) =>
+        ConnectPublicAsync(context.DnsEndPoint.Host, context.DnsEndPoint.Port, ct);
+
+    /// <summary>Resolves the host once, refuses it if any address is not public, and connects to the
+    /// checked address itself (so a second lookup cannot point somewhere else). Tries each address in turn.</summary>
+    public static async ValueTask<Stream> ConnectPublicAsync(string host, int port, CancellationToken ct)
     {
-        var addresses = await Dns.GetHostAddressesAsync(context.DnsEndPoint.Host, ct);
-        var target = addresses.FirstOrDefault(IsPublic)
-            ?? throw new HttpRequestException($"{context.DnsEndPoint.Host} is not on the public web.");
+        var addresses = IPAddress.TryParse(host.Trim('[', ']'), out var literal) ? [literal] : await Dns.GetHostAddressesAsync(host, ct);
+        if (addresses.Length == 0 || !addresses.Any(IsPublic))
+        {
+            throw new HttpRequestException($"{host} is not on the public web.");
+        }
         if (addresses.Any(a => !IsPublic(a)))
         {
-            throw new HttpRequestException($"{context.DnsEndPoint.Host} points to a local address.");
+            throw new HttpRequestException($"{host} points to a local address.");
         }
-        var socket = new Socket(target.AddressFamily, SocketType.Stream, ProtocolType.Tcp) { NoDelay = true };
-        try
+        Exception? last = null;
+        foreach (var target in addresses)
         {
-            await socket.ConnectAsync(new IPEndPoint(target, context.DnsEndPoint.Port), ct);
-            return new NetworkStream(socket, ownsSocket: true);
+            var socket = new Socket(target.AddressFamily, SocketType.Stream, ProtocolType.Tcp) { NoDelay = true };
+            try
+            {
+                using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                timeout.CancelAfter(TimeSpan.FromSeconds(addresses.Length > 1 ? 5 : 20));
+                await socket.ConnectAsync(new IPEndPoint(target, port), timeout.Token);
+                return new NetworkStream(socket, ownsSocket: true);
+            }
+            catch (Exception ex) when (ex is SocketException || ex is OperationCanceledException && !ct.IsCancellationRequested)
+            {
+                socket.Dispose();
+                last = ex;
+            }
+            catch
+            {
+                socket.Dispose();
+                throw;
+            }
         }
-        catch
-        {
-            socket.Dispose();
-            throw;
-        }
+        throw new HttpRequestException($"Could not connect to {host}.", last);
     }
 }

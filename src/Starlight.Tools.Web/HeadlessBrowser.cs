@@ -40,12 +40,17 @@ public sealed class EdgeBrowser(string profileDir, string? exe = null) : IBrowse
     private Process? _process;
     private JobObject? _job;
     private Cdp? _cdp;
+    private FilterProxy? _proxy;
 
     /// <summary>More browser flags; tests on Linux need --no-sandbox when running as root.</summary>
     internal string[] ExtraArgs { get; init; } = [];
 
     /// <summary>Decides for every request the page makes, redirects and images included. Public web only by default.</summary>
     internal Func<Uri, CancellationToken, Task<bool>> Allow { get; init; } = UrlGuard.IsPublicAsync;
+
+    /// <summary>How the browser's own proxy connects. The default resolves once and connects to the checked
+    /// public address, which closes the DNS-rebinding gap between <see cref="Allow"/> and the connection.</summary>
+    internal Func<string, int, CancellationToken, ValueTask<Stream>> Connect { get; init; } = UrlGuard.ConnectPublicAsync;
 
     public static string? FindExe()
     {
@@ -89,9 +94,12 @@ public sealed class EdgeBrowser(string profileDir, string? exe = null) : IBrowse
             Directory.CreateDirectory(profileDir);
             var portFile = Path.Combine(profileDir, "DevToolsActivePort");
             File.Delete(portFile);
+            _proxy ??= new FilterProxy(Connect);
             string[] args =
             [
                 .. ExtraArgs,
+                // Every connection goes through the filter, loopback too ("<-loopback>" removes the built-in bypass).
+                $"--proxy-server=http://127.0.0.1:{_proxy.Port}", "--proxy-bypass-list=<-loopback>",
                 "--headless=new", "--remote-debugging-port=0", "--user-data-dir=" + profileDir, "--no-first-run", "--no-default-browser-check",
                 "--disable-extensions", "--disable-sync", "--disable-features=msEdgeSidebarV2,EdgeCollections", "--mute-audio", "--disable-background-networking", "about:blank",
             ];
@@ -168,6 +176,10 @@ public sealed class EdgeBrowser(string profileDir, string? exe = null) : IBrowse
     public async ValueTask DisposeAsync()
     {
         await StopAsync();
+        if (_proxy is not null)
+        {
+            await _proxy.DisposeAsync();
+        }
         _job?.Dispose();
         _startLock.Dispose();
     }
