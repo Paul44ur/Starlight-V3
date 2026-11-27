@@ -70,7 +70,7 @@ internal sealed class Shell : IDisposable
         _memoryStore = new MemoryStore(_core.Db);
         _memory = new MemoryTools(_memoryStore);
         _memory.TrackTurns(_core.Events);
-        _core.AddTools(new PcTools(), new AppTools(new AppCatalog()), _memory, _web, network, code, skills,
+        _core.AddTools(new PcTools(), new NotifyTools(_core.Events), new AppTools(new AppCatalog()), _memory, _web, network, code, skills,
             new DesktopTools(new UiSnapshot(), _core.Events, () => !string.IsNullOrWhiteSpace(_core.Settings.Current.Model.VisionProjectorFile)));
         _core.KillSwitch.RegisterCleanup("input", Input.ReleaseAll);
         _core.KillSwitch.RegisterCleanup("pointer", () => _core.Events.Publish(new ClearPointer()));
@@ -94,6 +94,7 @@ internal sealed class Shell : IDisposable
         _core.Events.Subscribe<KillSwitchChanged>(_ => OnUi(UpdateKillItem));
         _core.Events.Subscribe<ModelStatus>(m => OnUi(() => _tray.ToolTipText = $"Starlight: model {m.Status.ToLowerInvariant()}"));
         _core.Events.Subscribe<Notice>(n => OnUi(() => _tray.ShowNotification("Starlight", n.Text)));
+        _core.Events.Subscribe<UserNotification>(n => OnUi(() => _tray.ShowNotification(n.Title, n.Text)));
         _core.Settings.Changed += s => OnUi(() => RegisterHotkeys());
 
         _showEvent = new EventWaitHandle(false, EventResetMode.AutoReset, Program.ShowEventName);

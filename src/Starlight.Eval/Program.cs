@@ -39,7 +39,7 @@ var cases = Directory.GetFiles(casesDir, "*.json").SelectMany(EvalCase.Load).ToL
 var data = Path.Combine(Path.GetTempPath(), "starlight-eval-" + Guid.NewGuid().ToString("N")[..8]);
 var paths = new StarlightPaths(data, AppContext.BaseDirectory);
 using var core = AssistantCore.Start(paths, new DenyAllApprovals(), installCrashHandler: false);
-core.AddTools(new PcTools(), new AppTools(new AppCatalog()), new MemoryTools(new MemoryStore(core.Db)),
+core.AddTools(new PcTools(), new NotifyTools(core.Events), new AppTools(new AppCatalog()), new MemoryTools(new MemoryStore(core.Db)),
     WebTools.Create(paths, core.Settings, new MemorySecretStore(), new NoUserPrompt()),
     new NetworkTools(core.Settings, new NetProbe(), new SshRunner(new MemorySecretStore(), Path.Combine(data, "known-hosts.json"))),
     new CodeTools(new AppContainerSandbox(Path.Combine(paths.RuntimeDir, "python"), Path.Combine(data, "sandbox")), data),

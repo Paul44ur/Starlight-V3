@@ -15,7 +15,8 @@ Files that ship next to the app or are downloaded on first start:
 
 - llama.cpp `llama-server` (MIT), the Python embeddable package (PSF License)
 - whisper.cpp models (MIT), Silero VAD (MIT), Kokoro-82M (Apache-2.0), espeak-ng data (GPL-3.0,
-  used as data by sherpa-onnx; not linked into Starlight)
+  used as data by sherpa-onnx; not linked into Starlight). The user agreed to ship it (27 Nov 2026).
+  The installer must put the GPL-3.0 text and a link to the espeak-ng source next to the data.
 
 No code is copied from other projects yet. Ideas only (no code) from Windows-MCP (MIT): the numbered
 list of controls on screen.

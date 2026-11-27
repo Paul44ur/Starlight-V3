@@ -53,7 +53,7 @@ using var probe = new NetProbe();
 var skillStore = new SkillStore(core.Db);
 using var skillRecorder = new SkillRecorder(skillStore, core.Events, core.Dispatcher.SawUntrusted);
 var skillTools = new SkillTools(skillStore) { Caller = core.Dispatcher };
-core.AddTools(new PcTools(), new AppTools(new AppCatalog()), memory, web,
+core.AddTools(new PcTools(), new NotifyTools(core.Events), new AppTools(new AppCatalog()), memory, web,
     new NetworkTools(core.Settings, probe, new SshRunner(secrets, Path.Combine(paths.DataRoot, "ssh-known-hosts.json"))),
     new CodeTools(new AppContainerSandbox(Path.Combine(paths.RuntimeDir, "python"), Path.Combine(paths.DataRoot, "sandbox")), paths.DataRoot),
     skillTools,
@@ -82,6 +82,7 @@ core.Events.Subscribe<AnswerDelta>(d => Console.Write(d.Delta));
 core.Events.Subscribe<ToolStarted>(t => Gray($"\n  → {t.Tool} {t.ArgumentsJson}"));
 core.Events.Subscribe<ToolFinished>(t => Gray($"  ← {(t.Ok ? "ok" : "failed")} in {t.Took.TotalMilliseconds:0} ms: {t.Summary}"));
 core.Events.Subscribe<ModelStatus>(m => Gray($"[model: {m.Status} {m.Detail}]"));
+core.Events.Subscribe<UserNotification>(n => Gray($"[notification: {n.Title}: {n.Text}]"));
 foreach (var failed in await hotkeys.Failed)
 {
     Gray($"[hotkey {failed} could not be registered]");

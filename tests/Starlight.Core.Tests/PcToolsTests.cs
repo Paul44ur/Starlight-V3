@@ -41,3 +41,36 @@ public sealed class PcToolsTests
         Assert.Throws<ToolException>(() => tools.FindFiles(" "));
     }
 }
+
+public sealed class NotifyToolsTests
+{
+    [Fact]
+    public async Task Notify_shows_a_short_one_line_notification()
+    {
+        using var env = new TestEnv();
+        var shown = new List<Starlight.Events.UserNotification>();
+        using var sub = env.Events.Subscribe<Starlight.Events.UserNotification>(shown.Add);
+        env.Registry.Add(new Starlight.Tools.Pc.NotifyTools(env.Events));
+        var dispatcher = env.Dispatcher(new FixedApprovals(ApprovalAnswer.Yes));
+
+        var r = await dispatcher.InvokeAsync("notify", new Dictionary<string, object?> { ["text"] = "The pizza\nis ready. " + new string('x', 400) }, "t1", "chat", default);
+
+        Assert.True(r.Ok, r.Text);
+        var n = Assert.Single(shown);
+        Assert.Equal("Starlight", n.Title);
+        Assert.DoesNotContain('\n', n.Text);
+        Assert.True(n.Text.Length <= Starlight.Tools.Pc.NotifyTools.MaxText);
+        Assert.StartsWith("The pizza is ready.", n.Text);
+    }
+
+    [Fact]
+    public async Task Notify_asks_after_outside_content_and_needs_text()
+    {
+        using var env = new TestEnv();
+        env.Registry.Add(new Starlight.Tools.Pc.NotifyTools(env.Events));
+        var def = env.Registry.Find("notify")!;
+        Assert.True(def.AskAfterUntrusted);
+        var r = await env.Dispatcher(new FixedApprovals(ApprovalAnswer.Yes)).InvokeAsync("notify", new Dictionary<string, object?> { ["text"] = "  " }, "t1", "chat", default);
+        Assert.False(r.Ok);
+    }
+}

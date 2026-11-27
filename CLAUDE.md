@@ -35,8 +35,12 @@ starting a phase. The user's decisions are in its section 9.
 - Docs in plain, short sentences.
 
 ## How we work
-- Branch `claude/project-thread-d69hmr`. Commit and push when a piece of work is done. No pull
-  requests, no progress messages to the user. The next message to the user is a beta to test.
+- Branches are named `v3/<kind>/<topic>`: kind is `feature`, `fix` or `chore`, the topic is a few
+  words in kebab-case (`v3/feature/notify`, `v3/fix/review-findings`). One branch per piece of work,
+  started from the newest one that is not merged yet. Commit and push when a piece of work is done.
+  No pull requests, no progress messages to the user. The next message to the user is a beta to test.
+- Analyzer warnings are errors. Fix a hit; switch a rule off only in `Directory.Build.props` or
+  `.globalconfig`, with the reason next to it.
 - GitHub Actions minutes are used up: no CI.
 - Build and test in the container (the .NET 10 SDK is installed from apt `dotnet-sdk-10.0`):
   `dotnet build Starlight.slnx` and `dotnet test --project tests/Starlight.Core.Tests`.

@@ -35,6 +35,9 @@ public sealed record ControlActive(bool Active) : StarlightEvent;
 
 public sealed record KillSwitchChanged(bool Engaged, string Reason) : StarlightEvent;
 public sealed record Notice(string Text, NoticeLevel Level = NoticeLevel.Info) : StarlightEvent;
+
+/// <summary>A notification the assistant shows for the user (the notify tool), as a Windows notification.</summary>
+public sealed record UserNotification(string Title, string Text) : StarlightEvent;
 public enum NoticeLevel { Info, Warning, Error }
 
 /// <summary>Model server status for the tray and the chat window.</summary>

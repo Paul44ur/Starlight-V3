@@ -39,7 +39,7 @@ public sealed class EvalScorerTests
         {
             "app", "window", "screen_look", "screen_find", "screen_point", "input_click", "input_type", "input_keys",
             "memory_remember", "memory_recall", "memory_forget", "web_search", "web_read", "web_research", "web_login",
-            "server_check", "server_ssh", "server_list", "code_write", "code_run", "skill_run", "system_info", "files_find",
+            "server_check", "server_ssh", "server_list", "code_write", "code_run", "skill_run", "system_info", "files_find", "notify",
         };
         var cases = Directory.GetFiles(Path.Combine(AppContext.BaseDirectory, "cases"), "*.json").SelectMany(EvalCase.Load).ToList();
         Assert.True(cases.Count >= 40);
