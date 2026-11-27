@@ -146,27 +146,48 @@ public sealed partial class CodeTools(ISandbox sandbox, string dataRoot) : ITool
 
     private static string Hash(string code) => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(code.Replace("\r\n", "\n", StringComparison.Ordinal))));
 
-    private string RealFolder(string folder)
+    private string RealFolder(string folder) => CheckFolder(folder, dataRoot);
+
+    /// <summary>The real folder a script may work on, or a readable refusal: never a drive root, the user's
+    /// profile folder, a system or program folder, Starlight's data, or a folder that holds one of them.
+    /// A link is followed first, so a junction can't point the script somewhere else.</summary>
+    internal static string CheckFolder(string folder, string dataRoot, IEnumerable<string>? protectedFolders = null)
     {
         var full = Path.GetFullPath(Environment.ExpandEnvironmentVariables(folder.Trim().Trim('"')));
         if (!Directory.Exists(full))
         {
             throw new ToolException($"The folder {full} does not exist.");
         }
-        var root = Path.GetPathRoot(full);
-        string[] off = [Environment.GetFolderPath(Environment.SpecialFolder.Windows), Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),
-            Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86), dataRoot];
-        if (string.Equals(full.TrimEnd(Path.DirectorySeparatorChar), root?.TrimEnd(Path.DirectorySeparatorChar), StringComparison.OrdinalIgnoreCase)
-            || off.Any(o => o.Length > 0 && full.StartsWith(o, StringComparison.OrdinalIgnoreCase)))
+        if (new DirectoryInfo(full).ResolveLinkTarget(returnFinalTarget: true) is { } link)
+        {
+            full = Path.GetFullPath(link.FullName);
+        }
+        full = Path.TrimEndingDirectorySeparator(full);
+        var root = Path.TrimEndingDirectorySeparator(Path.GetPathRoot(full) ?? "");
+        var off = (protectedFolders ?? [Environment.GetFolderPath(Environment.SpecialFolder.Windows), Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),
+            Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86), Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData)])
+            .Append(dataRoot).Where(o => o.Length > 0).Select(o => Path.TrimEndingDirectorySeparator(Path.GetFullPath(o))).ToList();
+        var profile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        if (string.Equals(full, root, StringComparison.OrdinalIgnoreCase)
+            || profile.Length > 0 && string.Equals(full, Path.TrimEndingDirectorySeparator(profile), StringComparison.OrdinalIgnoreCase)
+            || off.Any(o => IsSameOrUnder(full, o) || IsSameOrUnder(o, full)))
         {
             throw new ToolException($"Scripts may not work on {full}. Pick a folder of the user's own files.");
         }
         return full;
     }
 
+    private static bool IsSameOrUnder(string path, string folder) =>
+        string.Equals(path, folder, StringComparison.OrdinalIgnoreCase)
+        || path.StartsWith(folder + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>Links inside the folder are not followed: a copy or a snapshot stays inside the folder.</summary>
+    private static readonly EnumerationOptions Walk = new() { RecurseSubdirectories = true, AttributesToSkip = FileAttributes.ReparsePoint };
+
     internal static void CopyFolder(string from, string to, CancellationToken ct)
     {
-        var files = Directory.EnumerateFiles(from, "*", SearchOption.AllDirectories).Take(MaxFolderFiles + 1).ToList();
+        var files = Directory.EnumerateFiles(from, "*", Walk).Take(MaxFolderFiles + 1).ToList();
         if (files.Count > MaxFolderFiles)
         {
             throw new ToolException($"{from} has more than {MaxFolderFiles} files, too many to test on a copy. Pick a smaller folder.");
@@ -176,7 +197,7 @@ public sealed partial class CodeTools(ISandbox sandbox, string dataRoot) : ITool
             throw new ToolException($"{from} is larger than 1 GB, too large to test on a copy. Pick a smaller folder.");
         }
         Directory.CreateDirectory(to);
-        foreach (var dir in Directory.EnumerateDirectories(from, "*", SearchOption.AllDirectories))
+        foreach (var dir in Directory.EnumerateDirectories(from, "*", Walk))
         {
             Directory.CreateDirectory(Path.Combine(to, Path.GetRelativePath(from, dir)));
         }
@@ -190,7 +211,7 @@ public sealed partial class CodeTools(ISandbox sandbox, string dataRoot) : ITool
     }
 
     internal static Dictionary<string, (long Size, DateTime Time)> Snapshot(string dir) =>
-        Directory.EnumerateFiles(dir, "*", SearchOption.AllDirectories).Take(MaxFolderFiles * 2)
+        Directory.EnumerateFiles(dir, "*", Walk).Take(MaxFolderFiles * 2)
             .ToDictionary(f => Path.GetRelativePath(dir, f), f => { var i = new FileInfo(f); return (i.Length, i.LastWriteTimeUtc); }, StringComparer.OrdinalIgnoreCase);
 
     internal static string Changes(Dictionary<string, (long Size, DateTime Time)> before, Dictionary<string, (long Size, DateTime Time)> after)

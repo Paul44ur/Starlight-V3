@@ -232,3 +232,50 @@ public sealed class SkillTests
         Assert.Equal("x\",\"action\":\"close", ((JsonElement)args["name"]!).GetString());
     }
 }
+
+public sealed class FolderGuardTests
+{
+    [Fact]
+    public void Folders_that_hold_or_lie_in_protected_ones_are_refused()
+    {
+        using var env = new TestEnv();
+        var data = Directory.CreateDirectory(Path.Combine(env.Root, "home", "AppData", "Starlight")).FullName;
+        var photos = Directory.CreateDirectory(Path.Combine(env.Root, "home", "Photos")).FullName;
+        var similar = Directory.CreateDirectory(Path.Combine(env.Root, "home", "AppData2")).FullName;
+        string[] none = [];
+
+        Assert.Equal(photos, Starlight.Tools.Code.CodeTools.CheckFolder(photos, data, none));
+        Assert.Equal(similar, Starlight.Tools.Code.CodeTools.CheckFolder(similar, Path.Combine(env.Root, "home", "AppData"), none));
+        Assert.Throws<ToolException>(() => Starlight.Tools.Code.CodeTools.CheckFolder(Path.Combine(env.Root, "home"), data, none));
+        Assert.Throws<ToolException>(() => Starlight.Tools.Code.CodeTools.CheckFolder(data, data, none));
+    }
+
+    [Fact]
+    public void A_link_is_followed_before_the_check()
+    {
+        Assert.SkipWhen(OperatingSystem.IsWindows(), "symlinks need rights on Windows");
+        using var env = new TestEnv();
+        var data = Directory.CreateDirectory(Path.Combine(env.Root, "data2")).FullName;
+        var link = Path.Combine(env.Root, "innocent");
+        Directory.CreateSymbolicLink(link, data);
+
+        Assert.Throws<ToolException>(() => Starlight.Tools.Code.CodeTools.CheckFolder(link, data, []));
+    }
+
+    [Fact]
+    public void Copies_and_snapshots_do_not_follow_links_out_of_the_folder()
+    {
+        Assert.SkipWhen(OperatingSystem.IsWindows(), "symlinks need rights on Windows");
+        using var env = new TestEnv();
+        var outside = Directory.CreateDirectory(Path.Combine(env.Root, "outside")).FullName;
+        File.WriteAllText(Path.Combine(outside, "secret.txt"), "x");
+        var folder = Directory.CreateDirectory(Path.Combine(env.Root, "folder")).FullName;
+        File.WriteAllText(Path.Combine(folder, "a.txt"), "a");
+        Directory.CreateSymbolicLink(Path.Combine(folder, "jump"), outside);
+
+        Starlight.Tools.Code.CodeTools.CopyFolder(folder, Path.Combine(env.Root, "copy"), default);
+
+        Assert.False(File.Exists(Path.Combine(env.Root, "copy", "jump", "secret.txt")));
+        Assert.Equal(["a.txt"], Starlight.Tools.Code.CodeTools.Snapshot(folder).Keys);
+    }
+}
