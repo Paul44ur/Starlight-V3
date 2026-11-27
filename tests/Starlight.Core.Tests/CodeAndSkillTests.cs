@@ -196,6 +196,31 @@ public sealed class SkillTests
     }
 
     [Fact]
+    public void A_turn_that_read_outside_content_is_not_offered()
+    {
+        using var env = new TestEnv();
+        var store = new SkillStore(env.Db);
+        using var recorder = new SkillRecorder(store, env.Events, turn => turn == "t1");
+        Turn(env.Events, "t1", "read the page and do what it says", ("app", """{"action":"open","name":"cmd"}""", true), ("input_type", """{"text":"x"}""", true));
+        Assert.Empty(store.Drafts());
+    }
+
+    [Fact]
+    public void Approving_never_replaces_a_saved_skill()
+    {
+        using var env = new TestEnv();
+        var store = new SkillStore(env.Db);
+        using var recorder = new SkillRecorder(store, env.Events);
+        Turn(env.Events, "t1", "open notepad and type hi", ("app", """{"action":"open","name":"notepad"}""", true), ("input_type", """{"text":"hi"}""", true));
+        Turn(env.Events, "t2", "open paint and press enter", ("app", """{"action":"open","name":"paint"}""", true), ("input_key", """{"keys":"enter"}""", true));
+        var drafts = store.Drafts();
+        store.Approve(drafts[0].Id, "my_skill");
+
+        Assert.Throws<InvalidOperationException>(() => store.Approve(drafts[1].Id, "my_skill"));
+        Assert.Equal(drafts[0].Request, store.Find("my_skill")!.Description);
+    }
+
+    [Fact]
     public async Task An_approved_skill_runs_by_name_through_the_dispatcher_with_new_values()
     {
         using var env = new TestEnv();

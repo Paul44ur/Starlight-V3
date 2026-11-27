@@ -64,7 +64,7 @@ internal sealed class Shell : IDisposable
         _watcher = new ServerWatcher(_core.Settings, _probe, _core.Events);
         var network = new NetworkTools(_core.Settings, _probe, new SshRunner(_secrets, Path.Combine(paths.DataRoot, "ssh-known-hosts.json")));
         _skillStore = new SkillStore(_core.Db);
-        _skillRecorder = new SkillRecorder(_skillStore, _core.Events);
+        _skillRecorder = new SkillRecorder(_skillStore, _core.Events, _core.Dispatcher.SawUntrusted);
         var skills = new SkillTools(_skillStore) { Caller = _core.Dispatcher };
         var code = new CodeTools(new AppContainerSandbox(Path.Combine(paths.RuntimeDir, "python"), Path.Combine(paths.DataRoot, "sandbox")), paths.DataRoot);
         _memoryStore = new MemoryStore(_core.Db);

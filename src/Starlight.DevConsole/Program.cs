@@ -47,7 +47,7 @@ var secrets = new CredentialManagerStore();
 await using var web = WebTools.Create(paths, core.Settings, secrets, new ConsolePrompt());
 using var probe = new NetProbe();
 var skillStore = new SkillStore(core.Db);
-using var skillRecorder = new SkillRecorder(skillStore, core.Events);
+using var skillRecorder = new SkillRecorder(skillStore, core.Events, core.Dispatcher.SawUntrusted);
 var skillTools = new SkillTools(skillStore) { Caller = core.Dispatcher };
 core.AddTools(new PcTools(), new AppTools(new AppCatalog()), memory, web,
     new NetworkTools(core.Settings, probe, new SshRunner(secrets, Path.Combine(paths.DataRoot, "ssh-known-hosts.json"))),

@@ -333,7 +333,16 @@ internal sealed class ChatWindow : FluentWindow
             {
                 return;
             }
-            _skills.Approve(draft.Id, name.Text);
+            try
+            {
+                _skills.Approve(draft.Id, name.Text);
+            }
+            catch (InvalidOperationException ex)
+            {
+                name.ToolTip = ex.Message;
+                name.BorderBrush = Brushes.IndianRed;
+                return;
+            }
             Render();
         };
         dismiss.Click += (_, _) => { _skills.DropDraft(draft.Id); Render(); };

@@ -69,8 +69,13 @@ public sealed class SkillStore
     {
         var draft = Drafts().FirstOrDefault(d => d.Id == draftId) ?? throw new InvalidOperationException("The offer is gone.");
         var key = SkillName(name);
+        if (Find(key) is not null)
+        {
+            // Never replace a skill the user already saved by accident.
+            throw new InvalidOperationException($"A skill called {key} already exists. Pick another name.");
+        }
         using var c = _db.Open();
-        Exec(c, "INSERT OR REPLACE INTO skills(name,description,steps,parameters,created) VALUES($n,$d,$s,$p,$t)",
+        Exec(c, "INSERT INTO skills(name,description,steps,parameters,created) VALUES($n,$d,$s,$p,$t)",
             ("$n", key), ("$d", draft.Request), ("$s", JsonSerializer.Serialize(draft.Steps)), ("$p", JsonSerializer.Serialize(draft.Parameters)), ("$t", DateTimeOffset.Now.ToString("O")));
         Exec(c, "DELETE FROM skill_drafts WHERE id=$id", ("$id", draftId));
         return Find(key)!;

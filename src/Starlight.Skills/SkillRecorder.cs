@@ -30,10 +30,15 @@ public sealed class SkillRecorder : IDisposable
         public bool Failed { get; set; }
     }
 
-    public SkillRecorder(SkillStore store, EventHub events)
+    private readonly Func<string, bool> _sawUntrusted;
+
+    /// <param name="sawUntrusted">True for a turn that read outside content (a web page, a file, the screen).
+    /// Such a turn is never offered as a skill: its steps may come from a page's instructions, not the user.</param>
+    public SkillRecorder(SkillStore store, EventHub events, Func<string, bool>? sawUntrusted = null)
     {
         _store = store;
         _events = events;
+        _sawUntrusted = sawUntrusted ?? (_ => false);
         _subs.Add(events.Subscribe<TurnStarted>(e => _turns[e.TurnId] = new Turn(e.ConversationId, e.Text)));
         _subs.Add(events.Subscribe<ToolStarted>(e =>
         {
@@ -53,6 +58,9 @@ public sealed class SkillRecorder : IDisposable
             }
             lock (t)
             {
+                // Steps of the same tool can run side by side; the oldest open one is the one that finished first
+                // in most cases. Arguments are not in the event, so this can pair two calls of one tool the wrong way,
+                // but never steps of different tools.
                 var i = t.Started.FindIndex(s => s.Tool == e.Tool);
                 if (i < 0)
                 {
@@ -76,7 +84,7 @@ public sealed class SkillRecorder : IDisposable
         }));
         _subs.Add(events.Subscribe<AnswerCompleted>(e =>
         {
-            if (_turns.TryRemove(e.TurnId, out var t) && !e.Failed)
+            if (_turns.TryRemove(e.TurnId, out var t) && !e.Failed && !_sawUntrusted(e.TurnId))
             {
                 Offer(t);
             }
