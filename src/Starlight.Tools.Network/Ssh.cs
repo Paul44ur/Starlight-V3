@@ -102,7 +102,7 @@ public sealed class SshRunner(ISecretStore secrets, string knownHostsFile) : ISs
             catch (JsonException ex)
             {
                 // Starting over would trust any key again: a damaged file stops SSH until it is looked at.
-                var aside = knownHostsFile + ".broken-" + DateTime.Now.ToString("yyyyMMdd-HHmmss");
+                var aside = knownHostsFile + ".broken-" + DateTime.Now.ToString("yyyyMMdd-HHmmss", System.Globalization.CultureInfo.InvariantCulture);
                 try
                 {
                     File.Copy(knownHostsFile, aside, overwrite: true);

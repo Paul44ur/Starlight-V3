@@ -6,12 +6,12 @@ namespace Starlight.Tools.Network;
 /// command name a service, not add flags or climb out of a folder.</summary>
 public static class CommandPolicy
 {
-    private static readonly char[] ShellChars = [';', '|', '&', '`', '$', '(', ')', '<', '>', '\n', '\r', '\\', '"', '\'', '*', '?', '[', '{', '~'];
+    private static readonly System.Buffers.SearchValues<char> ShellChars = System.Buffers.SearchValues.Create(";|&`$()<>\n\r\\\"'*?[{~");
 
     public static bool IsAllowed(string command, IEnumerable<string> patterns)
     {
         var c = string.Join(' ', command.Split(' ', StringSplitOptions.RemoveEmptyEntries));
-        if (c.Length == 0 || c.IndexOfAny(ShellChars) >= 0)
+        if (c.Length == 0 || c.AsSpan().IndexOfAny(ShellChars) >= 0)
         {
             return false;
         }

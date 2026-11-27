@@ -17,18 +17,18 @@ public sealed class PcTools : IToolProvider
     }
 
     [Tool("system_info"), Description("Facts about this PC: Windows version, CPU, memory, free disk space, uptime. Use it for questions about the computer itself.")]
-    public string SystemInfo()
+    public static string SystemInfo()
     {
         var sb = new StringBuilder();
-        sb.AppendLine($"OS: {RuntimeInformation.OSDescription} ({RuntimeInformation.OSArchitecture})");
-        sb.AppendLine($"Computer: {Environment.MachineName}, user {Environment.UserName}");
-        sb.AppendLine($"CPU: {Environment.ProcessorCount} logical cores");
+        sb.AppendLine(System.Globalization.CultureInfo.InvariantCulture, $"OS: {RuntimeInformation.OSDescription} ({RuntimeInformation.OSArchitecture})");
+        sb.AppendLine(System.Globalization.CultureInfo.InvariantCulture, $"Computer: {Environment.MachineName}, user {Environment.UserName}");
+        sb.AppendLine(System.Globalization.CultureInfo.InvariantCulture, $"CPU: {Environment.ProcessorCount} logical cores");
         var mem = GC.GetGCMemoryInfo();
-        sb.AppendLine($"Memory: {Gb(mem.TotalAvailableMemoryBytes)} total");
-        sb.AppendLine($"Uptime: {FormatSpan(TimeSpan.FromMilliseconds(Environment.TickCount64))}");
+        sb.AppendLine(System.Globalization.CultureInfo.InvariantCulture, $"Memory: {Gb(mem.TotalAvailableMemoryBytes)} total");
+        sb.AppendLine(System.Globalization.CultureInfo.InvariantCulture, $"Uptime: {FormatSpan(TimeSpan.FromMilliseconds(Environment.TickCount64))}");
         foreach (var d in DriveInfo.GetDrives().Where(d => d.IsReady && d.DriveType is DriveType.Fixed or DriveType.Removable))
         {
-            sb.AppendLine($"Drive {d.Name}: {Gb(d.AvailableFreeSpace)} free of {Gb(d.TotalSize)}");
+            sb.AppendLine(System.Globalization.CultureInfo.InvariantCulture, $"Drive {d.Name}: {Gb(d.AvailableFreeSpace)} free of {Gb(d.TotalSize)}");
         }
         return sb.ToString().TrimEnd();
     }

@@ -77,6 +77,8 @@ public sealed class AssistantCore : IDisposable
     public void Dispose()
     {
         Log.Information("Starlight stopping");
+        Agent?.Dispose();
+        KillSwitch.Dispose();
         Log.CloseAndFlush();
     }
 }

@@ -131,7 +131,7 @@ while (true)
             Console.WriteLine($"Saved {core.Reports.Save(line.Length > 8 ? line[8..] : "(no text)")}");
             continue;
         case "/export":
-            Console.WriteLine($"Saved {core.Exporter(() => new PcTools([]).SystemInfo() + "\n\nModel server output:\n" + host.RecentOutput).Export(Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory))}");
+            Console.WriteLine($"Saved {core.Exporter(() => PcTools.SystemInfo() + "\n\nModel server output:\n" + host.RecentOutput).Export(Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory))}");
             continue;
     }
     var sw = Stopwatch.StartNew();
@@ -183,7 +183,7 @@ internal sealed class ConsolePrompt : IUserPrompt
 internal sealed class DevTools : IToolProvider
 {
     [Tool("dev_wait", TimeoutSeconds = 60), Description("Waits for the given number of seconds. Only for testing.")]
-    public async Task<string> Wait([Description("Seconds to wait")] int seconds, CancellationToken ct)
+    public static async Task<string> Wait([Description("Seconds to wait")] int seconds, CancellationToken ct)
     {
         await Task.Delay(TimeSpan.FromSeconds(seconds), ct);
         return $"Waited {seconds} seconds.";

@@ -167,6 +167,7 @@ public sealed class MemoryStore
         return words.Count == 0 ? null : string.Join(" OR ", words);
     }
 
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Security", "CA2100", Justification = "Every SQL text here is a constant; values go in as parameters.")]
     private static void Exec(SqliteConnection c, string sql, params (string, object?)[] args)
     {
         using var cmd = c.CreateCommand();
@@ -178,6 +179,7 @@ public sealed class MemoryStore
         cmd.ExecuteNonQuery();
     }
 
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Security", "CA2100", Justification = "Every SQL text here is a constant; values go in as parameters.")]
     private static List<Fact> Query(SqliteConnection c, string sql, params (string, object?)[] args)
     {
         using var cmd = c.CreateCommand();
@@ -191,7 +193,7 @@ public sealed class MemoryStore
         while (r.Read())
         {
             list.Add(new Fact(r.GetInt64(0), r.GetString(1), r.GetString(2), r.IsDBNull(3) ? null : r.GetString(3),
-                DateTimeOffset.Parse(r.GetString(4)), DateTimeOffset.Parse(r.GetString(5))));
+                DateTimeOffset.Parse(r.GetString(4), System.Globalization.CultureInfo.InvariantCulture), DateTimeOffset.Parse(r.GetString(5), System.Globalization.CultureInfo.InvariantCulture)));
         }
         return list;
     }

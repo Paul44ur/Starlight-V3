@@ -39,14 +39,14 @@ public sealed class SkillTools(SkillStore store) : IToolProvider, IPromptContrib
             var step = skill.Steps[i];
             var args = Fill(step.ArgumentsJson, values);
             var result = await caller.CallAsync(step.Tool, args, ct);
-            sb.Append($"{i + 1}. {step.Tool}: {(result.Ok ? "ok" : "failed")} - {Short(result.Text)}\n");
+            sb.Append(System.Globalization.CultureInfo.InvariantCulture, $"{i + 1}. {step.Tool}: {(result.Ok ? "ok" : "failed")} - {Short(result.Text)}\n");
             if (!result.Ok)
             {
-                sb.Append($"Stopped at step {i + 1} of {skill.Steps.Count}.");
+                sb.Append(System.Globalization.CultureInfo.InvariantCulture, $"Stopped at step {i + 1} of {skill.Steps.Count}.");
                 return sb.ToString();
             }
         }
-        sb.Append($"{skill.Name} done ({skill.Steps.Count} steps).");
+        sb.Append(System.Globalization.CultureInfo.InvariantCulture, $"{skill.Name} done ({skill.Steps.Count} steps).");
         return sb.ToString();
     }
 
@@ -60,7 +60,7 @@ public sealed class SkillTools(SkillStore store) : IToolProvider, IPromptContrib
         var sb = new StringBuilder("Skills the user approved (run with skill_run):");
         foreach (var s in skills.Take(25))
         {
-            sb.Append($"\n- {s.Name}({string.Join(", ", s.Parameters)}): first made for \"{Short(s.Description)}\"");
+            sb.Append(System.Globalization.CultureInfo.InvariantCulture, $"\n- {s.Name}({string.Join(", ", s.Parameters)}): first made for \"{Short(s.Description)}\"");
         }
         return Task.FromResult<string?>(sb.ToString());
     }

@@ -101,11 +101,11 @@ public sealed class NetworkTools(SettingsStore settings, INetProbe probe, ISshRu
             sb.Append("- ").Append(s.Display);
             if (!string.IsNullOrWhiteSpace(s.SshUser))
             {
-                sb.Append($", SSH as {s.SshUser} on port {s.SshPort}; allowed without asking: {string.Join(", ", s.AllowedCommands)}");
+                sb.Append(System.Globalization.CultureInfo.InvariantCulture, $", SSH as {s.SshUser} on port {s.SshPort}; allowed without asking: {string.Join(", ", s.AllowedCommands)}");
             }
             if (s.WatchMinutes > 0)
             {
-                sb.Append($", watched every {s.WatchMinutes} min");
+                sb.Append(System.Globalization.CultureInfo.InvariantCulture, $", watched every {s.WatchMinutes} min");
             }
             sb.Append('\n');
         }

@@ -438,7 +438,7 @@ internal sealed class Shell : IDisposable
     }
 
     private string SystemInfo() =>
-        new PcTools([]).SystemInfo()
+        PcTools.SystemInfo()
         + $"\nModel: {_core.Settings.Current.Model.ChatModelFile} ({_model.State})"
         + "\n\nModel server output (last lines):\n" + _model.RecentOutput;
 

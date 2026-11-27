@@ -25,7 +25,7 @@ public sealed class ToolRegistry
     public void Add(IToolProvider provider)
     {
         var group = provider.GetType().Name.Replace("Tools", "", StringComparison.Ordinal);
-        foreach (var method in provider.GetType().GetMethods(BindingFlags.Public | BindingFlags.Instance))
+        foreach (var method in provider.GetType().GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.Static))
         {
             var attr = method.GetCustomAttribute<ToolAttribute>();
             if (attr is null)
@@ -38,7 +38,7 @@ public sealed class ToolRegistry
             {
                 throw new InvalidOperationException($"Two tools are named {attr.Name}.");
             }
-            var function = AIFunctionFactory.Create(method, provider, new AIFunctionFactoryOptions
+            var function = AIFunctionFactory.Create(method, method.IsStatic ? null : provider, new AIFunctionFactoryOptions
             {
                 Name = attr.Name,
                 Description = description,

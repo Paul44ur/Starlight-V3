@@ -6,8 +6,8 @@ namespace Starlight.Tools.Web;
 /// <summary>Cookies kept after a web login, per site, encrypted for the Windows user (DPAPI).</summary>
 public sealed class SessionVault(string dir, Func<byte[], byte[]>? protect = null, Func<byte[], byte[]>? unprotect = null)
 {
-    private readonly Func<byte[], byte[]> _protect = protect ?? (b => ProtectedData.Protect(b, null, DataProtectionScope.CurrentUser));
-    private readonly Func<byte[], byte[]> _unprotect = unprotect ?? (b => ProtectedData.Unprotect(b, null, DataProtectionScope.CurrentUser));
+    private readonly Func<byte[], byte[]> _protect = protect ?? (b => OperatingSystem.IsWindows() ? ProtectedData.Protect(b, null, DataProtectionScope.CurrentUser) : throw new PlatformNotSupportedException("Saved sign-ins need Windows."));
+    private readonly Func<byte[], byte[]> _unprotect = unprotect ?? (b => OperatingSystem.IsWindows() ? ProtectedData.Unprotect(b, null, DataProtectionScope.CurrentUser) : throw new PlatformNotSupportedException("Saved sign-ins need Windows."));
 
     /// <summary>The part of a host a login belongs to: "mail.example.com" and "www.example.com" share "example.com".</summary>
     public static string SiteOf(string host)

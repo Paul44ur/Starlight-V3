@@ -39,7 +39,7 @@ public sealed class SettingsStore
         {
             return settings;
         }
-        var aside = _path + ".broken-" + DateTime.Now.ToString("yyyyMMdd-HHmmss");
+        var aside = _path + ".broken-" + DateTime.Now.ToString("yyyyMMdd-HHmmss", System.Globalization.CultureInfo.InvariantCulture);
         try
         {
             File.Copy(_path, aside, overwrite: true);

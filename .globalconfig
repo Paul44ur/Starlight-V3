@@ -1,0 +1,4 @@
+is_global = true
+
+# Security review of SQL text: on. Every query must be a constant with parameters.
+dotnet_diagnostic.CA2100.severity = warning

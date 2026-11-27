@@ -107,7 +107,12 @@ public sealed partial class JobObject : IDisposable
                 }
                 var process = Process.GetProcessById(pi.dwProcessId);
                 _ = process.Handle; // opened now, so the exit code stays readable after a quick exit
-                ResumeThread(pi.hThread);
+                if (ResumeThread(pi.hThread) == uint.MaxValue)
+                {
+                    var error = Marshal.GetLastWin32Error();
+                    TerminateProcess(pi.hProcess, 1);
+                    throw new Win32Exception(error);
+                }
                 return process;
             }
             finally
@@ -241,7 +246,7 @@ public sealed partial class JobObject : IDisposable
     private static partial bool CreateProcessW(string app, nint cmd, nint pa, nint ta, [MarshalAs(UnmanagedType.Bool)] bool inherit,
         uint flags, nint env, string? dir, ref STARTUPINFOW si, out PROCESS_INFORMATION pi);
 
-    [LibraryImport("kernel32.dll")]
+    [LibraryImport("kernel32.dll", SetLastError = true)]
     private static partial uint ResumeThread(nint thread);
 
     [LibraryImport("kernel32.dll")]

@@ -41,6 +41,7 @@ public sealed class SkillStore
         return (long)cmd.ExecuteScalar()!;
     }
 
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Security", "CA2100", Justification = "Every SQL text here is a constant; values go in as parameters.")]
     public List<SkillDraft> Drafts(string? conversation = null)
     {
         using var c = _db.Open();
@@ -53,7 +54,7 @@ public sealed class SkillStore
         var list = new List<SkillDraft>();
         while (r.Read())
         {
-            list.Add(new SkillDraft(r.GetInt64(0), r.GetString(1), r.GetString(2), Steps(r.GetString(3)), Names(r.GetString(4)), DateTimeOffset.Parse(r.GetString(5))));
+            list.Add(new SkillDraft(r.GetInt64(0), r.GetString(1), r.GetString(2), Steps(r.GetString(3)), Names(r.GetString(4)), DateTimeOffset.Parse(r.GetString(5), System.Globalization.CultureInfo.InvariantCulture)));
         }
         return list;
     }
@@ -90,7 +91,7 @@ public sealed class SkillStore
         var list = new List<Skill>();
         while (r.Read())
         {
-            list.Add(new Skill(r.GetString(0), r.GetString(1), Steps(r.GetString(2)), Names(r.GetString(3)), DateTimeOffset.Parse(r.GetString(4))));
+            list.Add(new Skill(r.GetString(0), r.GetString(1), Steps(r.GetString(2)), Names(r.GetString(3)), DateTimeOffset.Parse(r.GetString(4), System.Globalization.CultureInfo.InvariantCulture)));
         }
         return list;
     }
@@ -120,6 +121,7 @@ public sealed class SkillStore
     private static List<SkillStep> Steps(string json) => JsonSerializer.Deserialize<List<SkillStep>>(json) ?? [];
     private static List<string> Names(string json) => JsonSerializer.Deserialize<List<string>>(json) ?? [];
 
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Security", "CA2100", Justification = "Every SQL text here is a constant; values go in as parameters.")]
     private static void Exec(SqliteConnection c, string sql, params (string, object?)[] args)
     {
         using var cmd = c.CreateCommand();

@@ -28,7 +28,7 @@ public sealed class WebTools(
         { _owned = browser };
     }
 
-    private IAsyncDisposable? _owned;
+    private EdgeBrowser? _owned;
 
     public async ValueTask DisposeAsync()
     {

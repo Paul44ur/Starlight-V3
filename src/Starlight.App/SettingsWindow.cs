@@ -126,7 +126,7 @@ internal sealed class SettingsWindow : FluentWindow
         return box;
     }
 
-    private UIElement General()
+    private StackPanel General()
     {
         var g = _draft.General;
         var p = Section("General");
@@ -144,7 +144,7 @@ internal sealed class SettingsWindow : FluentWindow
         return p;
     }
 
-    private UIElement VoiceSection()
+    private StackPanel VoiceSection()
     {
         var v = _draft.Voice;
         var p = Section("Voice", "Hold the push-to-talk keys, speak, and let go. Press them again while Starlight talks to interrupt it.");
@@ -188,7 +188,7 @@ internal sealed class SettingsWindow : FluentWindow
         return p;
     }
 
-    private UIElement ModelSection()
+    private StackPanel ModelSection()
     {
         var m = _draft.Model;
         var p = Section("Model", "The AI model runs on your graphics card. Any GGUF model works; you can swap it at any time.");
@@ -221,7 +221,7 @@ internal sealed class SettingsWindow : FluentWindow
         return p;
     }
 
-    private UIElement WebSection()
+    private StackPanel WebSection()
     {
         var w = _draft.Web;
         var p = Section("Web", "How Starlight searches and which sites it may sign in to. Keys and passwords go to Windows Credential Manager, never into a file.");
@@ -324,7 +324,7 @@ internal sealed class SettingsWindow : FluentWindow
         return p;
     }
 
-    private UIElement ServersSection()
+    private StackPanel ServersSection()
     {
         var p = Section("Servers", "Your own servers. Starlight checks them, runs allowed commands over SSH, and can watch them. SSH passwords go to Windows Credential Manager.");
         var list = new StackPanel { Margin = new Thickness(0, 8, 0, 8) };
@@ -502,7 +502,7 @@ internal sealed class SettingsWindow : FluentWindow
         }
     }
 
-    private UIElement Permissions()
+    private StackPanel Permissions()
     {
         var p = Section("Permissions", "Safe runs without asking. Ask shows a Yes/No first. Blocked never runs.");
         foreach (var tool in _core.Tools.All.OrderBy(t => t.Name))
@@ -531,7 +531,7 @@ internal sealed class SettingsWindow : FluentWindow
         return p;
     }
 
-    private UIElement Diagnostics(Action export, Action report)
+    private StackPanel Diagnostics(Action export, Action report)
     {
         var p = Section("Diagnostics", $"Starlight {Logging.Version}. After using Starlight for a while, export diagnostics and send the zip.");
         var exportButton = new Button { Content = "Export diagnostics", Appearance = ControlAppearance.Primary, Margin = new Thickness(0, 8, 0, 0) };

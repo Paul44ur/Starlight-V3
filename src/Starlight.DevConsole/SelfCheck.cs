@@ -225,7 +225,7 @@ internal static partial class SelfCheck
         var report = new StringBuilder($"# Starlight self-check {DateTime.Now:yyyy-MM-dd HH:mm}\n\n{Environment.OSVersion}, {Environment.ProcessorCount} threads\n\n| Check | Result | Time | Detail |\n| --- | --- | --- | --- |\n");
         foreach (var l in lines)
         {
-            report.Append($"| {l.Name} | {l.Result} | {l.Ms} ms | {l.Detail.Replace("|", "/", StringComparison.Ordinal)} |\n");
+            report.Append(System.Globalization.CultureInfo.InvariantCulture, $"| {l.Name} | {l.Result} | {l.Ms} ms | {l.Detail.Replace("|", "/", StringComparison.Ordinal)} |\n");
         }
         var file = Path.Combine(paths.DataRoot, "self-check.md");
         await File.WriteAllTextAsync(file, report.ToString());
@@ -240,7 +240,7 @@ internal static partial class SelfCheck
     private sealed class SlowTool : IToolProvider
     {
         [Tool("selfcheck_wait", TimeoutSeconds = 30), System.ComponentModel.Description("Waits 20 seconds.")]
-        public async Task<string> Wait(CancellationToken ct)
+        public static async Task<string> Wait(CancellationToken ct)
         {
             await Task.Delay(TimeSpan.FromSeconds(20), ct);
             return "finished";

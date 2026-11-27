@@ -26,7 +26,7 @@ public sealed class AgentLoop(
     SessionTrace trace,
     StarlightDb db,
     IEnumerable<IPromptContributor> contributors,
-    IEnumerable<ITurnObserver> observers)
+    IEnumerable<ITurnObserver> observers) : IDisposable
 {
     /// <summary>Set while game mode has the model stopped: every turn answers with this.</summary>
     public string? PausedReason { get; set; }
@@ -49,7 +49,7 @@ public sealed class AgentLoop(
         }
     }
 
-    public async Task<TurnOutcome> RunAsync(Conversation conversation, string userText, string source, CancellationToken ct = default, IList<AIContent>? attachments = null)
+    public async Task<TurnOutcome> RunAsync(Conversation conversation, string userText, string source, IList<AIContent>? attachments = null, CancellationToken ct = default)
     {
         var turnId = Guid.NewGuid().ToString("N")[..12];
         await _oneTurn.WaitAsync(ct);
@@ -434,7 +434,7 @@ public sealed class AgentLoop(
         }
     }
 
-    private async Task ObserveAsync(ITurnObserver observer, Conversation conversation, string userText, string answer)
+    private static async Task ObserveAsync(ITurnObserver observer, Conversation conversation, string userText, string answer)
     {
         try
         {
@@ -444,5 +444,11 @@ public sealed class AgentLoop(
         {
             Log.Error(ex, "Turn observer {Observer} failed", observer.GetType().Name);
         }
+    }
+
+    public void Dispose()
+    {
+        CancelCurrent();
+        _oneTurn.Dispose();
     }
 }

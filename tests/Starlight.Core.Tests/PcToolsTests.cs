@@ -8,7 +8,7 @@ public sealed class PcToolsTests
     [Fact]
     public void System_info_names_os_memory_and_drives()
     {
-        var text = new PcTools([]).SystemInfo();
+        var text = PcTools.SystemInfo();
         Assert.Contains("OS:", text);
         Assert.Contains("Memory:", text);
         Assert.Contains("Drive", text);

@@ -8,7 +8,7 @@ namespace Starlight;
 /// stop on it), runs every cleanup callback (release keys, hide the pointer, stop speech) and stays engaged
 /// until resumed. A cleanup that hangs is left behind after a short wait, so it can't hold up the others.
 /// </summary>
-public sealed class KillSwitch(EventHub events)
+public sealed class KillSwitch(EventHub events) : IDisposable
 {
     private readonly Lock _gate = new();
     private CancellationTokenSource _cts = new();
@@ -93,6 +93,14 @@ public sealed class KillSwitch(EventHub events)
         if (IsEngaged)
         {
             throw new OperationCanceledException("The kill switch is engaged.");
+        }
+    }
+
+    public void Dispose()
+    {
+        lock (_gate)
+        {
+            _cts.Dispose();
         }
     }
 }

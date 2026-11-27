@@ -5,6 +5,8 @@ namespace Starlight.Tests;
 
 public sealed class EvalScorerTests
 {
+    private static readonly string[] Expects = ["tool", "none", "clarify"];
+
     private static ChatResponse Call(string name, Dictionary<string, object?> args) =>
         new(new ChatMessage(ChatRole.Assistant, [new FunctionCallContent("c", name, args)]));
 
@@ -43,7 +45,7 @@ public sealed class EvalScorerTests
         Assert.True(cases.Count >= 40);
         Assert.Equal(cases.Count, cases.Select(c => c.Id).Distinct().Count());
         Assert.All(cases.Where(c => c.Expect == "tool"), c => Assert.All(c.Tools, t => Assert.Contains(t, planned)));
-        Assert.All(cases, c => Assert.Contains(c.Expect, new[] { "tool", "none", "clarify" }));
+        Assert.All(cases, c => Assert.Contains(c.Expect, Expects));
     }
 }
 

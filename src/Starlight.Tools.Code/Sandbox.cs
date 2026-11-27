@@ -51,7 +51,7 @@ public sealed partial class AppContainerSandbox(string pythonDir, string scratch
         var folderAce = Grant(folder, sid, FileSystemRights.Modify);
         try
         {
-            return await Task.Run(() => Run(sid, python, scriptCopy, folder, temp, timeout, ct), ct);
+            return await Task.Run(() => OperatingSystem.IsWindows() ? Run(sid, python, scriptCopy, folder, temp, timeout, ct) : throw new PlatformNotSupportedException(), ct);
         }
         finally
         {
@@ -69,6 +69,7 @@ public sealed partial class AppContainerSandbox(string pythonDir, string scratch
         }
     }
 
+    [System.Runtime.Versioning.SupportedOSPlatform("windows")]
     private static SecurityIdentifier ContainerSid()
     {
         var hr = CreateAppContainerProfile(ContainerName, "Starlight code sandbox", "Runs scripts Starlight writes, without network.", 0, 0, out var sidPtr);
@@ -90,6 +91,7 @@ public sealed partial class AppContainerSandbox(string pythonDir, string scratch
         }
     }
 
+    [System.Runtime.Versioning.SupportedOSPlatform("windows")]
     private static FileSystemAccessRule? Grant(string dir, SecurityIdentifier sid, FileSystemRights rights)
     {
         if (!OperatingSystem.IsWindows())
@@ -110,6 +112,7 @@ public sealed partial class AppContainerSandbox(string pythonDir, string scratch
         return rule;
     }
 
+    [System.Runtime.Versioning.SupportedOSPlatform("windows")]
     private static void Revoke(string dir, FileSystemAccessRule? rule)
     {
         if (rule is null || !OperatingSystem.IsWindows())
@@ -129,6 +132,7 @@ public sealed partial class AppContainerSandbox(string pythonDir, string scratch
         }
     }
 
+    [System.Runtime.Versioning.SupportedOSPlatform("windows")]
     private static SandboxResult Run(SecurityIdentifier sid, string python, string script, string folder, string temp, TimeSpan timeout, CancellationToken ct)
     {
         using var job = new JobObject(memoryLimitBytes: 1L << 30, noChildProcesses: true, cpuSeconds: (int)Math.Max(10, timeout.TotalSeconds));
@@ -182,7 +186,7 @@ public sealed partial class AppContainerSandbox(string pythonDir, string scratch
             };
             var env = Environment("SYSTEMROOT=" + System.Environment.GetEnvironmentVariable("SYSTEMROOT"),
                 "TEMP=" + temp, "TMP=" + temp, "PYTHONIOENCODING=utf-8", "PYTHONDONTWRITEBYTECODE=1", "PYTHONUTF8=1", "PYTHONNOUSERSITE=1");
-            var cmd = new StringBuilder(JobObject.CommandLine(python, ["-I", "-B", script, folder]));
+            var cmd = (JobObject.CommandLine(python, ["-I", "-B", script, folder]) + "\0").ToCharArray(); // writable, as CreateProcessW wants
             if (!CreateProcessW(null, cmd, 0, 0, true, EXTENDED_STARTUPINFO_PRESENT | CREATE_SUSPENDED | CREATE_NO_WINDOW | CREATE_UNICODE_ENVIRONMENT,
                 env, folder, ref si, out pi))
             {
@@ -197,7 +201,11 @@ public sealed partial class AppContainerSandbox(string pythonDir, string scratch
                 TerminateProcess(pi.hProcess, 1); // never let it run outside the limits
                 throw new ToolException("The sandbox could not put Python under its limits, so it did not run.");
             }
-            ResumeThread(pi.hThread);
+            if (ResumeThread(pi.hThread) == uint.MaxValue)
+            {
+                TerminateProcess(pi.hProcess, 1);
+                throw new ToolException("The sandbox could not start Python.");
+            }
             writePipe.Dispose(); // only the child holds the write end now, so reading ends when it exits
 
             var output = new MemoryStream();
@@ -213,7 +221,7 @@ public sealed partial class AppContainerSandbox(string pythonDir, string scratch
                         output.Write(buf, 0, (int)Math.Min(n, MaxOutput - output.Length));
                     }
                 }
-            });
+            }, CancellationToken.None); // reads until the child ends; the loop below ends the child on cancel
             var deadline = DateTime.UtcNow + timeout;
             var timedOut = false;
             while (WaitForSingleObject(pi.hProcess, 200) != 0)
@@ -225,7 +233,7 @@ public sealed partial class AppContainerSandbox(string pythonDir, string scratch
                     break;
                 }
             }
-            readTask.Wait(TimeSpan.FromSeconds(3));
+            readTask.Wait(TimeSpan.FromSeconds(3), CancellationToken.None);
             GetExitCodeProcess(pi.hProcess, out var exit);
             ct.ThrowIfCancellationRequested();
             var text = Encoding.UTF8.GetString(output.ToArray());
@@ -342,7 +350,7 @@ public sealed partial class AppContainerSandbox(string pythonDir, string scratch
     private static extern void DeleteProcThreadAttributeList(nint list);
 
     [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
-    private static extern bool CreateProcessW(string? app, StringBuilder cmd, nint pa, nint ta, bool inherit, uint flags, string env, string dir, ref STARTUPINFOEX si, out PROCESS_INFORMATION pi);
+    private static extern bool CreateProcessW(string? app, char[] cmd, nint pa, nint ta, bool inherit, uint flags, string env, string dir, ref STARTUPINFOEX si, out PROCESS_INFORMATION pi);
 
     [DllImport("kernel32.dll")]
     private static extern uint ResumeThread(nint thread);

@@ -124,7 +124,7 @@ public sealed partial class CodeTools(ISandbox sandbox, string dataRoot) : ITool
         sb.Append("Changes:\n").Append(changes);
         if (backup is not null)
         {
-            sb.Append($"\nA backup of the folder as it was is in {backup}.");
+            sb.Append(System.Globalization.CultureInfo.InvariantCulture, $"\nA backup of the folder as it was is in {backup}.");
         }
         return sb.ToString();
     }

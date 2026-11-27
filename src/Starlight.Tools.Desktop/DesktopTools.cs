@@ -28,17 +28,17 @@ public sealed class DesktopTools(UiSnapshot ui, EventHub events, Func<bool> hasV
         var region = area?.Trim().ToLowerInvariant() == "screen" ? ScreenCapture.VirtualDesktop() : ScreenCapture.WindowRect(hwnd);
         using var shot = ScreenCapture.Capture(region);
         var text = new StringBuilder();
-        text.AppendLine($"Front window: \"{title}\"");
+        text.AppendLine(System.Globalization.CultureInfo.InvariantCulture, $"Front window: \"{title}\"");
         text.AppendLine(elements.Count == 0 ? "No controls could be read from it." : "Controls (use the number to click or point):");
         foreach (var e in elements)
         {
-            text.AppendLine($"{e}{(e.IsPassword ? " (password field)" : "")}");
+            text.AppendLine(System.Globalization.CultureInfo.InvariantCulture, $"{e}{(e.IsPassword ? " (password field)" : "")}");
         }
         if (hasVision())
         {
             var frame = shot.Frame();
             _lastPicture = frame;
-            text.AppendLine($"Picture: {(int)(shot.Area.Width * frame.Scale)}x{(int)(shot.Area.Height * frame.Scale)} pixels. Prefer control numbers; x,y means a point in this picture.");
+            text.AppendLine(System.Globalization.CultureInfo.InvariantCulture, $"Picture: {(int)(shot.Area.Width * frame.Scale)}x{(int)(shot.Area.Height * frame.Scale)} pixels. Prefer control numbers; x,y means a point in this picture.");
             return new ToolOutput(text.ToString().TrimEnd(), [new DataContent(shot.ToPng(), "image/png")]);
         }
         _lastPicture = null;
@@ -127,7 +127,7 @@ public sealed class DesktopTools(UiSnapshot ui, EventHub events, Func<bool> hasV
 
     [Tool("window", TimeoutSeconds = 10)]
     [Description("Arranges windows: minimize, maximize, restore, snap_left, snap_right, or minimize_all (show the desktop).")]
-    public string Window(
+    public static string Window(
         [Description("minimize, maximize, restore, snap_left, snap_right or minimize_all")] string action,
         [Description("Window title or program name; the front window if empty")] string? name = null)
     {

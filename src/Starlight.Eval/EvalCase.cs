@@ -21,12 +21,14 @@ public sealed class EvalCase
     public IEnumerable<string> Tools => (Tool ?? "").Split('|', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 
     public static List<EvalCase> Load(string file) =>
-        JsonSerializer.Deserialize<List<EvalCase>>(File.ReadAllText(file), new JsonSerializerOptions
-        {
-            PropertyNameCaseInsensitive = true,
-            ReadCommentHandling = JsonCommentHandling.Skip,
-            AllowTrailingCommas = true,
-        }) ?? [];
+        JsonSerializer.Deserialize<List<EvalCase>>(File.ReadAllText(file), Json) ?? [];
+
+    private static readonly JsonSerializerOptions Json = new()
+    {
+        PropertyNameCaseInsensitive = true,
+        ReadCommentHandling = JsonCommentHandling.Skip,
+        AllowTrailingCommas = true,
+    };
 }
 
 public sealed record EvalVerdict(bool Pass, string Why);

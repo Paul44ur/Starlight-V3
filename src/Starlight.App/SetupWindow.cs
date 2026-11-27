@@ -18,8 +18,14 @@ namespace Starlight.App;
 /// First start (plan 5.13): the models folder, the downloads (resumable, checked), a microphone test,
 /// a short voice test and "start with Windows". Opens again from the tray until everything is in place.
 /// </summary>
-internal sealed class SetupWindow : FluentWindow
+internal sealed class SetupWindow : FluentWindow, IDisposable
 {
+    public void Dispose()
+    {
+        _running?.Dispose();
+        _running = null;
+    }
+
     private readonly AssistantCore _core;
     private readonly TextBox _folder = new() { MinWidth = 380 };
     private readonly StackPanel _downloads = new();
@@ -95,7 +101,11 @@ internal sealed class SetupWindow : FluentWindow
         root.Children.Add(new ScrollViewer { Content = p });
         Content = root;
         FillDownloads();
-        Closed += (_, _) => _running?.Cancel();
+        Closed += (_, _) =>
+        {
+            _running?.Cancel();
+            Dispose();
+        };
     }
 
     /// <summary>True when the voice files are missing, so the first start shows this window.</summary>

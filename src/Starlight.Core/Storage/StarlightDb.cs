@@ -45,6 +45,7 @@ public sealed class StarlightDb : IAuditSink
         return c;
     }
 
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Security", "CA2100", Justification = "Every SQL text here is a constant; values go in as parameters.")]
     internal static void Exec(SqliteConnection c, string sql, params (string Name, object? Value)[] args)
     {
         using var cmd = c.CreateCommand();
@@ -57,12 +58,12 @@ public sealed class StarlightDb : IAuditSink
     }
 
     // ---- audit ----
-    public void Record(AuditEntry e)
+    public void Record(AuditEntry entry)
     {
         using var c = Open();
         Exec(c, "INSERT INTO audit(time,tool,args,source,approved_by,ok,result) VALUES($t,$tool,$a,$s,$by,$ok,$r)",
-            ("$t", e.Time.ToString("O")), ("$tool", e.Tool), ("$a", e.ArgumentsJson), ("$s", e.Source),
-            ("$by", e.ApprovedBy), ("$ok", e.Ok ? 1 : 0), ("$r", e.Result));
+            ("$t", entry.Time.ToString("O")), ("$tool", entry.Tool), ("$a", entry.ArgumentsJson), ("$s", entry.Source),
+            ("$by", entry.ApprovedBy), ("$ok", entry.Ok ? 1 : 0), ("$r", entry.Result));
     }
 
     public List<AuditEntry> RecentAudit(int limit = 200)
@@ -75,7 +76,7 @@ public sealed class StarlightDb : IAuditSink
         var list = new List<AuditEntry>();
         while (r.Read())
         {
-            list.Add(new AuditEntry(DateTimeOffset.Parse(r.GetString(0)), r.GetString(1), r.GetString(2), r.GetString(3), r.GetString(4), r.GetInt32(5) == 1, r.GetString(6)));
+            list.Add(new AuditEntry(DateTimeOffset.Parse(r.GetString(0), System.Globalization.CultureInfo.InvariantCulture), r.GetString(1), r.GetString(2), r.GetString(3), r.GetString(4), r.GetInt32(5) == 1, r.GetString(6)));
         }
         return list;
     }
@@ -99,7 +100,7 @@ public sealed class StarlightDb : IAuditSink
         var list = new List<StatRow>();
         while (r.Read())
         {
-            list.Add(new StatRow(DateTimeOffset.Parse(r.GetString(0)), r.GetString(1), r.GetDouble(2), r.IsDBNull(3) ? null : r.GetString(3)));
+            list.Add(new StatRow(DateTimeOffset.Parse(r.GetString(0), System.Globalization.CultureInfo.InvariantCulture), r.GetString(1), r.GetDouble(2), r.IsDBNull(3) ? null : r.GetString(3)));
         }
         return list;
     }
@@ -128,6 +129,7 @@ public sealed class StarlightDb : IAuditSink
         return json is null ? null : JsonSerializer.Deserialize<List<ChatMessage>>(json, MessageJson);
     }
 
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Security", "CA2100", Justification = "Every SQL text here is a constant; values go in as parameters.")]
     public List<ConversationInfo> ListConversations(string? search = null, int limit = 200)
     {
         using var c = Open();
@@ -144,7 +146,7 @@ public sealed class StarlightDb : IAuditSink
         var list = new List<ConversationInfo>();
         while (r.Read())
         {
-            list.Add(new ConversationInfo(r.GetString(0), r.GetString(1), DateTimeOffset.Parse(r.GetString(2)), DateTimeOffset.Parse(r.GetString(3)), r.GetInt32(4) == 1));
+            list.Add(new ConversationInfo(r.GetString(0), r.GetString(1), DateTimeOffset.Parse(r.GetString(2), System.Globalization.CultureInfo.InvariantCulture), DateTimeOffset.Parse(r.GetString(3), System.Globalization.CultureInfo.InvariantCulture), r.GetInt32(4) == 1));
         }
         return list;
     }

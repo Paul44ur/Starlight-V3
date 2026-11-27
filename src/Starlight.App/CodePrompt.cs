@@ -39,7 +39,7 @@ internal sealed class CodePrompt(EventHub events, Action<string> say) : IUserPro
         }
     }
 
-    private static Window Show(string title, string question, TaskCompletionSource<string?> done)
+    private static FluentWindow Show(string title, string question, TaskCompletionSource<string?> done)
     {
         var window = new FluentWindow
         {

@@ -32,10 +32,10 @@ public static class CrashHandler
             }
             var file = Path.Combine(s_paths.CrashDir, $"crash-{DateTime.Now:yyyyMMdd-HHmmss-fff}.txt");
             var sb = new StringBuilder()
-                .AppendLine($"Starlight {Logging.Version}")
-                .AppendLine($"Time: {DateTimeOffset.Now:O}")
-                .AppendLine($"Source: {source}, terminating: {terminating}")
-                .AppendLine($"OS: {Environment.OSVersion}, 64-bit: {Environment.Is64BitProcess}, .NET {Environment.Version}")
+                .AppendLine(System.Globalization.CultureInfo.InvariantCulture, $"Starlight {Logging.Version}")
+                .AppendLine(System.Globalization.CultureInfo.InvariantCulture, $"Time: {DateTimeOffset.Now:O}")
+                .AppendLine(System.Globalization.CultureInfo.InvariantCulture, $"Source: {source}, terminating: {terminating}")
+                .AppendLine(System.Globalization.CultureInfo.InvariantCulture, $"OS: {Environment.OSVersion}, 64-bit: {Environment.Is64BitProcess}, .NET {Environment.Version}")
                 .AppendLine()
                 .AppendLine(ex?.ToString() ?? "(no exception object)");
             File.WriteAllText(file, sb.ToString());

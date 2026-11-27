@@ -5,6 +5,7 @@ using Wpf.Ui.Appearance;
 
 namespace Starlight.App;
 
+[System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1001", Justification = "WPF owns the Application object; the shell is disposed in OnExit.")]
 public partial class App : Application
 {
     private Shell? _shell;

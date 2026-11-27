@@ -471,7 +471,7 @@ internal sealed class ChatWindow : FluentWindow
         {
             if (content is TextContent t)
             {
-                full.Append($"\n\nAttached file {name}:\n```\n{t.Text}\n```");
+                full.Append(System.Globalization.CultureInfo.InvariantCulture, $"\n\nAttached file {name}:\n```\n{t.Text}\n```");
             }
             else
             {
@@ -569,7 +569,7 @@ internal sealed class ChatWindow : FluentWindow
 
     // ---- Activity and Statistics ----
 
-    private UIElement MemoryView()
+    private DockPanel MemoryView()
     {
         var search = new TextBox { PlaceholderText = "Search memory", Margin = new Thickness(0, 0, 0, 8) };
         var list = new StackPanel();
@@ -635,7 +635,7 @@ internal sealed class ChatWindow : FluentWindow
         return panel;
     }
 
-    private UIElement ActivityView()
+    private DockPanel ActivityView()
     {
         var view = new ListView();
         foreach (var e in _core.Db.RecentAudit(300))
@@ -657,7 +657,7 @@ internal sealed class ChatWindow : FluentWindow
         return panel;
     }
 
-    private UIElement StatisticsView()
+    private ScrollViewer StatisticsView()
     {
         var since = DateTimeOffset.Now.AddDays(-7);
         var turns = _core.Db.Stats("turn.seconds", since);

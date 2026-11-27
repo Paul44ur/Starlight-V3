@@ -47,7 +47,7 @@ public static class Excerpt
         return words.Count(have.Contains) / (double)words.Count;
     }
 
-    private static IEnumerable<string> Words(string s) =>
+    private static string[] Words(string s) =>
         new string(s.Select(ch => char.IsLetterOrDigit(ch) ? char.ToLowerInvariant(ch) : ' ').ToArray()).Split(' ', StringSplitOptions.RemoveEmptyEntries);
 
     private static string Stem(string w) => w.Length > 4 && w.EndsWith('s') ? w[..^1] : w;

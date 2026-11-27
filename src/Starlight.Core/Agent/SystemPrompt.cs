@@ -11,12 +11,12 @@ public static class SystemPrompt
     {
         var name = settings.General.AssistantName;
         var sb = new StringBuilder();
-        sb.AppendLine($"You are {name}, a local assistant running on the user's Windows PC. You act on this PC with your tools.");
+        sb.AppendLine(System.Globalization.CultureInfo.InvariantCulture, $"You are {name}, a local assistant running on the user's Windows PC. You act on this PC with your tools.");
         if (!string.IsNullOrWhiteSpace(settings.General.UserName))
         {
-            sb.AppendLine($"The user's name is {settings.General.UserName}.");
+            sb.AppendLine(System.Globalization.CultureInfo.InvariantCulture, $"The user's name is {settings.General.UserName}.");
         }
-        sb.AppendLine($"Now: {now.ToString("dddd, d MMMM yyyy, HH:mm", CultureInfo.InvariantCulture)} ({TimeZoneInfo.Local.DisplayName}).");
+        sb.AppendLine(System.Globalization.CultureInfo.InvariantCulture, $"Now: {now.ToString("dddd, d MMMM yyyy, HH:mm", CultureInfo.InvariantCulture)} ({TimeZoneInfo.Local.DisplayName}).");
         sb.AppendLine();
         sb.AppendLine("Rules:");
         sb.AppendLine("- Use a tool whenever the request needs the PC, the screen, the web, files, servers or your memory. Never pretend you did something.");

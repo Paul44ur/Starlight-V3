@@ -63,7 +63,7 @@ public static class AppMatcher
         var hits = Find(name, list);
         if (hits.Count <= 1)
         {
-            return (hits.FirstOrDefault(), hits);
+            return (hits.Count == 1 ? hits[0] : null, hits);
         }
         var close = list.Any(a => Normalize(a.Name) == wanted || Normalize(a.Name).StartsWith(wanted, StringComparison.Ordinal));
         return close ? (hits[0], hits) : (null, hits.Take(5).ToList());
