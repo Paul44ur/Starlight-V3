@@ -35,28 +35,68 @@ public sealed class SettingsStore
         {
             return new AppSettings();
         }
+        if (TryRead(_path, out var settings, out var error))
+        {
+            return settings;
+        }
+        var aside = _path + ".broken-" + DateTime.Now.ToString("yyyyMMdd-HHmmss");
         try
         {
-            return JsonSerializer.Deserialize<AppSettings>(File.ReadAllText(_path), Json) ?? new AppSettings();
+            File.Copy(_path, aside, overwrite: true);
         }
-        catch (Exception ex) when (ex is JsonException or IOException)
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            var aside = _path + ".broken-" + DateTime.Now.ToString("yyyyMMdd-HHmmss");
-            try { File.Copy(_path, aside, overwrite: true); } catch (IOException) { }
-            Log.Error(ex, "Settings file could not be read; kept it as {Aside} and started with defaults", aside);
-            return new AppSettings();
+        }
+        // One bad field must not lose everything: the copy from the last good save comes next.
+        if (TryRead(_path + ".bak", out var backup, out _))
+        {
+            Log.Error(error, "Settings file could not be read; kept it as {Aside} and used the backup", aside);
+            return backup;
+        }
+        Log.Error(error, "Settings file could not be read; kept it as {Aside} and started with defaults", aside);
+        return new AppSettings();
+    }
+
+    private static bool TryRead(string path, out AppSettings settings, out Exception? error)
+    {
+        settings = new AppSettings();
+        error = null;
+        try
+        {
+            if (!File.Exists(path))
+            {
+                return false;
+            }
+            var read = JsonSerializer.Deserialize<AppSettings>(File.ReadAllText(path), Json);
+            if (read is null)
+            {
+                error = new JsonException("The settings file is empty.");
+                return false;
+            }
+            settings = read;
+            return true;
+        }
+        catch (Exception ex) when (ex is JsonException or IOException or UnauthorizedAccessException or NotSupportedException)
+        {
+            error = ex;
+            return false;
         }
     }
 
-    /// <summary>Changes settings and writes them atomically (temp file, then replace, keeping a .bak).</summary>
+    /// <summary>Changes settings and writes them atomically (temp file, then replace, keeping a .bak).
+    /// The change is made on a copy: if saving fails, the live settings stay as they were, and a reader
+    /// never sees a half-made change.</summary>
     public void Update(Action<AppSettings> change)
     {
+        AppSettings next;
         lock (_gate)
         {
-            change(Current);
-            Save(Current);
+            next = JsonSerializer.Deserialize<AppSettings>(JsonSerializer.Serialize(Current, Json), Json)!;
+            change(next);
+            Save(next);
+            Current = next;
         }
-        Changed?.Invoke(Current);
+        Changed?.Invoke(next);
     }
 
     private void Save(AppSettings settings)

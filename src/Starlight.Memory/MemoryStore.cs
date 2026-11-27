@@ -40,8 +40,13 @@ public sealed class MemoryStore
     /// <summary>Saves a fact. Returns the fact it replaced on the same topic, if any.</summary>
     public (Fact Saved, Fact? Replaced) Remember(string text, string? topic, string? conversation)
     {
-        text = text.Trim();
-        var key = NormalizeTopic(string.IsNullOrWhiteSpace(topic) ? text : topic);
+        text = Clean(text);
+        // Without a topic the whole fact is the key, so two different facts never replace each other.
+        var key = string.IsNullOrWhiteSpace(topic) ? NormalizeTopic(text, 40) : NormalizeTopic(topic);
+        if (key.Length == 0)
+        {
+            key = text.ToLowerInvariant();
+        }
         using var c = _db.Open();
         using var tx = c.BeginTransaction();
         var old = Query(c, "SELECT id,text,topic,conversation,created,updated FROM facts WHERE topic=$t", ("$t", key)).FirstOrDefault();
@@ -84,18 +89,45 @@ public sealed class MemoryStore
             : Query(c, "SELECT id,text,topic,conversation,created,updated FROM facts WHERE text LIKE $q OR topic LIKE $q ORDER BY updated DESC", ("$q", "%" + filter + "%"));
     }
 
-    public bool Forget(long id, string reason = "deleted")
+    /// <summary>Forgets a fact for good: its earlier versions in the history go too.</summary>
+    public bool Forget(long id)
     {
         using var c = _db.Open();
+        using var tx = c.BeginTransaction();
         var f = Query(c, "SELECT id,text,topic,conversation,created,updated FROM facts WHERE id=$id", ("$id", id)).FirstOrDefault();
         if (f is null)
         {
             return false;
         }
-        Exec(c, "INSERT INTO facts_history(fact_id,text,topic,conversation,changed,reason) VALUES($id,$x,$t,$c,$n,$r)",
-            ("$id", f.Id), ("$x", f.Text), ("$t", f.Topic), ("$c", f.Conversation), ("$n", DateTimeOffset.Now.ToString("O")), ("$r", reason));
+        Exec(c, "DELETE FROM facts_history WHERE fact_id=$id", ("$id", id));
         Exec(c, "DELETE FROM facts WHERE id=$id", ("$id", id));
+        tx.Commit();
         return true;
+    }
+
+    /// <summary>Earlier versions of a fact (replaced texts), newest first.</summary>
+    public List<string> History(long id)
+    {
+        using var c = _db.Open();
+        using var cmd = c.CreateCommand();
+        cmd.CommandText = "SELECT text FROM facts_history WHERE fact_id=$id ORDER BY id DESC";
+        cmd.Parameters.AddWithValue("$id", id);
+        using var r = cmd.ExecuteReader();
+        var list = new List<string>();
+        while (r.Read())
+        {
+            list.Add(r.GetString(0));
+        }
+        return list;
+    }
+
+    public const int MaxFactLength = 300;
+
+    /// <summary>One line, at most <see cref="MaxFactLength"/> characters: a fact goes into every matching prompt.</summary>
+    internal static string Clean(string text)
+    {
+        var one = string.Join(' ', text.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
+        return one.Length > MaxFactLength ? one[..MaxFactLength].TrimEnd() + "…" : one;
     }
 
     /// <summary>"Forget this conversation": removes what was learned in it.</summary>
@@ -104,15 +136,15 @@ public sealed class MemoryStore
         var facts = All().Where(f => f.Conversation == conversationId).ToList();
         foreach (var f in facts)
         {
-            Forget(f.Id, "conversation forgotten");
+            Forget(f.Id);
         }
         return facts.Count;
     }
 
-    internal static string NormalizeTopic(string topic)
+    internal static string NormalizeTopic(string topic, int maxWords = 6)
     {
         var words = new string(topic.ToLowerInvariant().Select(ch => char.IsLetterOrDigit(ch) ? ch : ' ').ToArray())
-            .Split(' ', StringSplitOptions.RemoveEmptyEntries).Where(w => w.Length > 1).Take(6);
+            .Split(' ', StringSplitOptions.RemoveEmptyEntries).Where(w => w.Length > 1).Take(maxWords);
         return string.Join(' ', words);
     }
 
