@@ -1,10 +1,12 @@
 namespace Starlight.Tools.Network;
 
 /// <summary>Which SSH commands run without asking: a command that matches a pattern of the server's allow-list
-/// ("*" is any text) and has no shell tricks (chaining, pipes, redirects, substitution).</summary>
+/// and has no shell tricks (chaining, pipes, redirects, substitution, globs). A "*" in a pattern stands for any
+/// text, but not for an option ("-f", "--force") and not for "..": "systemctl status *" lets the user's
+/// command name a service, not add flags or climb out of a folder.</summary>
 public static class CommandPolicy
 {
-    private static readonly char[] ShellChars = [';', '|', '&', '`', '$', '(', ')', '<', '>', '\n', '\r', '\\', '"', '\''];
+    private static readonly char[] ShellChars = [';', '|', '&', '`', '$', '(', ')', '<', '>', '\n', '\r', '\\', '"', '\'', '*', '?', '[', '{', '~'];
 
     public static bool IsAllowed(string command, IEnumerable<string> patterns)
     {
@@ -13,30 +15,41 @@ public static class CommandPolicy
         {
             return false;
         }
-        return patterns.Any(p => Matches(string.Join(' ', p.Split(' ', StringSplitOptions.RemoveEmptyEntries)), c));
+        return patterns.Any(p => Matches(string.Join(' ', p.Split(' ', StringSplitOptions.RemoveEmptyEntries)).Split('*'), 0, c, 0));
     }
 
-    private static bool Matches(string pattern, string command)
+    /// <summary>Matches parts[i..] against command[pos..], where a "*" sits between each two parts.</summary>
+    private static bool Matches(string[] parts, int i, string command, int pos)
     {
-        var parts = pattern.Split('*');
-        if (parts.Length == 1)
+        if (i == 0)
         {
-            return pattern == command;
-        }
-        if (!command.StartsWith(parts[0], StringComparison.Ordinal) || !command.EndsWith(parts[^1], StringComparison.Ordinal))
-        {
-            return false;
-        }
-        var pos = parts[0].Length;
-        for (var i = 1; i < parts.Length - 1; i++)
-        {
-            var at = command.IndexOf(parts[i], pos, StringComparison.Ordinal);
-            if (at < 0)
+            if (!command.AsSpan(pos).StartsWith(parts[0], StringComparison.Ordinal))
             {
                 return false;
             }
-            pos = at + parts[i].Length;
+            return parts.Length == 1 ? command.Length == parts[0].Length : Matches(parts, 1, command, parts[0].Length);
         }
-        return command.Length - parts[^1].Length >= pos;
+        // Try every place the next literal part can start; the text skipped is what the "*" covers.
+        var last = i == parts.Length - 1;
+        for (var at = pos; at <= command.Length; at++)
+        {
+            if (last ? command.Length - at != parts[i].Length || !command.AsSpan(at).SequenceEqual(parts[i]) : !command.AsSpan(at).StartsWith(parts[i], StringComparison.Ordinal))
+            {
+                continue;
+            }
+            if (!SafeWildcard(command[pos..at]))
+            {
+                continue;
+            }
+            if (last || Matches(parts, i + 1, command, at + parts[i].Length))
+            {
+                return true;
+            }
+        }
+        return false;
     }
+
+    private static bool SafeWildcard(string covered) =>
+        !covered.Split(' ', StringSplitOptions.RemoveEmptyEntries).Any(t => t.StartsWith('-'))
+        && !covered.Contains("..", StringComparison.Ordinal);
 }

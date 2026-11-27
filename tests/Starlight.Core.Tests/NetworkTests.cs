@@ -65,6 +65,10 @@ public sealed class NetworkTests
     [InlineData("docker ps | sh", false)]
     [InlineData("docker ps -a", false)]
     [InlineData("", false)]
+    [InlineData("systemctl status nginx --kill-whom=all", false)]
+    [InlineData("journalctl -n 50 -u nginx --vacuum-time=1s", false)]
+    [InlineData("systemctl status ../../x", false)]
+    [InlineData("systemctl status /etc/*", false)]
     public void Only_allow_listed_commands_without_shell_tricks_run_freely(string command, bool allowed) =>
         Assert.Equal(allowed, CommandPolicy.IsAllowed(command, new ServerEntry().AllowedCommands));
 
@@ -200,5 +204,36 @@ public sealed class NetworkTests
         Assert.Equal(("example.com", new Uri("https://example.com/x")), NetworkTools.Target("https://example.com/x", null));
         Assert.Equal(("10.0.0.1", (Uri?)null), NetworkTools.Target("10.0.0.1", null));
         Assert.Throws<ToolException>(() => NetworkTools.Target("not a host", null));
+    }
+}
+
+public sealed class NetworkFixTests
+{
+    [Fact]
+    public void A_loose_server_name_counts_only_when_one_server_fits()
+    {
+        using var env = new TestEnv();
+        env.Settings.Update(s =>
+        {
+            s.Servers.Add(new ServerEntry { Name = "nas", Host = "10.0.0.1" });
+            s.Servers.Add(new ServerEntry { Name = "nas2", Host = "10.0.0.2" });
+        });
+        var tools = new NetworkTools(env.Settings, new FakeProbe(), new FakeSsh());
+
+        Assert.Equal("10.0.0.2", tools.Find("nas2")!.Host);
+        Assert.Null(tools.Find("the nas2 box")); // "nas" and "nas2" both fit
+        Assert.Equal("10.0.0.1", tools.Find("NAS")!.Host);
+    }
+
+    [Fact]
+    public void Damaged_saved_server_keys_stop_ssh_instead_of_trusting_again()
+    {
+        using var env = new TestEnv();
+        var file = Path.Combine(env.Root, "known.json");
+        File.WriteAllText(file, "{ broken");
+        var ssh = new SshRunner(new Starlight.Security.MemorySecretStore(), file);
+
+        var ex = Assert.Throws<ToolException>(() => ssh.Known());
+        Assert.Contains("damaged", ex.Message);
     }
 }

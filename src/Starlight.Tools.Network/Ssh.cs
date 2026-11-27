@@ -45,10 +45,10 @@ public sealed class SshRunner(ISecretStore secrets, string knownHostsFile) : ISs
         var info = new ConnectionInfo(server.Host, server.SshPort, server.SshUser, [.. auth]) { Timeout = TimeSpan.FromSeconds(10) };
         using var client = new SshClient(info);
         string? mismatch = null;
+        var known = Known(); // read before connecting, so a damaged file stops here with its message
         client.HostKeyReceived += (_, e) =>
         {
             var seen = e.FingerPrintSHA256;
-            var known = Known();
             var key = $"{server.Host}:{server.SshPort}";
             if (known.TryGetValue(key, out var stored))
             {
@@ -89,7 +89,7 @@ public sealed class SshRunner(ISecretStore secrets, string knownHostsFile) : ISs
         return new SshOutput(cmd.ExitStatus ?? -1, output.TrimEnd());
     }
 
-    private Dictionary<string, string> Known()
+    internal Dictionary<string, string> Known()
     {
         lock (_lock)
         {
@@ -99,9 +99,19 @@ public sealed class SshRunner(ISecretStore secrets, string knownHostsFile) : ISs
                     ? JsonSerializer.Deserialize<Dictionary<string, string>>(File.ReadAllText(knownHostsFile)) ?? []
                     : [];
             }
-            catch (JsonException)
+            catch (JsonException ex)
             {
-                return [];
+                // Starting over would trust any key again: a damaged file stops SSH until it is looked at.
+                var aside = knownHostsFile + ".broken-" + DateTime.Now.ToString("yyyyMMdd-HHmmss");
+                try
+                {
+                    File.Copy(knownHostsFile, aside, overwrite: true);
+                }
+                catch (IOException)
+                {
+                }
+                Serilog.Log.Error(ex, "The saved server keys are damaged; kept a copy as {Aside}", aside);
+                throw new ToolException($"The file with the saved server keys is damaged, so SSH is stopped to stay safe. A copy is in {aside}. Export diagnostics from the tray and send them.");
             }
         }
     }

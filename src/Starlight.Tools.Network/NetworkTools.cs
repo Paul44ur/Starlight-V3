@@ -129,8 +129,11 @@ public sealed class NetworkTools(SettingsStore settings, INetProbe probe, ISshRu
         var servers = settings.Current.Servers;
         return servers.FirstOrDefault(s => s.Name.Equals(t, StringComparison.OrdinalIgnoreCase))
             ?? servers.FirstOrDefault(s => s.Host.Equals(t, StringComparison.OrdinalIgnoreCase))
-            ?? servers.FirstOrDefault(s => s.Name.Length > 0 && t.Contains(s.Name, StringComparison.OrdinalIgnoreCase));
+            ?? OnlyOne(servers.Where(s => s.Name.Length > 0 && t.Contains(s.Name, StringComparison.OrdinalIgnoreCase)).ToList());
     }
+
+    /// <summary>A loose match counts only if it is the only one: "nas2" must not pick "nas".</summary>
+    private static ServerEntry? OnlyOne(List<ServerEntry> matches) => matches.Count == 1 ? matches[0] : null;
 
     internal static (string Host, Uri? Url) Target(string target, ServerEntry? server)
     {

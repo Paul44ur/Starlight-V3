@@ -94,7 +94,7 @@ public sealed class ServerEntry
     public string SshUser { get; set; } = "";
     /// <summary>Optional private key file. Without it, the password in Credential Manager is used.</summary>
     public string SshKeyFile { get; set; } = "";
-    public List<string> AllowedCommands { get; set; } = ["uptime", "df -h", "free -m", "systemctl status *", "docker ps", "journalctl -n 50 *"];
+    public List<string> AllowedCommands { get; set; } = ["uptime", "df -h", "free -m", "systemctl status *", "docker ps", "journalctl -n 50 -u *"];
     public List<int> WatchPorts { get; set; } = [];
     public string HealthUrl { get; set; } = "";
     public int WatchMinutes { get; set; }
