@@ -136,3 +136,54 @@ public sealed class SpokenCodeTests
     public void Other_speech_is_not_a_code(string heard) =>
         Assert.Null(Starlight.Voice.SpokenCode.Parse(heard));
 }
+
+public sealed class SpeechFixTests
+{
+    private static List<string> SplitAll(params string[] deltas)
+    {
+        var s = new Starlight.Voice.SentenceSplitter();
+        var all = deltas.SelectMany(d => s.Add(d)).ToList();
+        if (s.Flush() is { } rest)
+        {
+            all.Add(rest);
+        }
+        return all;
+    }
+
+    [Fact]
+    public void A_streamed_code_block_is_not_spoken()
+    {
+        var said = SplitAll("Here it is:\n``", "`python\nprint('a')\n", "x = 1\n`", "``\nDone. Bye now.");
+        Assert.DoesNotContain(said, x => x.Contains("print") || x.Contains("x = 1") || x.Contains('`'));
+        Assert.Contains("Done.", said);
+        Assert.Contains("Bye now.", said);
+    }
+
+    [Fact]
+    public void An_unclosed_code_block_is_dropped_at_the_end()
+    {
+        var said = SplitAll("Look.\n```\nsecret code");
+        Assert.Equal(["Look."], said);
+    }
+
+    [Fact]
+    public void No_ends_a_sentence()
+    {
+        Assert.Equal(["The answer is no.", "Sorry."], SplitAll("The answer is no. Sorry."));
+    }
+
+    [Fact]
+    public void Only_heading_marks_are_removed()
+    {
+        Assert.Equal("Title Issue #12 is open.", Starlight.Voice.SpeechText.ForSpeech("## Title\nIssue #12 is open."));
+        Assert.Equal("See this.", Starlight.Voice.SpeechText.ForSpeech("See ![chart](http://x/a.png) this."));
+    }
+
+    [Theory]
+    [InlineData("always", true)]
+    [InlineData("Always allow it.", true)]
+    [InlineData("always ask me first", false)]
+    [InlineData("always no", false)]
+    public void Only_a_clear_phrase_is_always(string heard, bool always) =>
+        Assert.Equal(always, Starlight.Voice.VoiceApproval.Parse(heard) == Starlight.Tools.ApprovalAnswer.Always);
+}

@@ -7,14 +7,54 @@ namespace Starlight.Voice;
 public sealed class SentenceSplitter
 {
     private readonly StringBuilder _buffer = new();
+    private bool _inCode;
 
-    /// <summary>Adds streamed text and returns the sentences that are now complete.</summary>
+    /// <summary>Adds streamed text and returns the sentences that are now complete.
+    /// A fenced code block (```) is never spoken: it is dropped as it streams.</summary>
     public IEnumerable<string> Add(string delta)
     {
         _buffer.Append(delta);
-        var text = _buffer.ToString();
+        var result = new List<string>();
+        while (true)
+        {
+            var text = _buffer.ToString();
+            if (_inCode)
+            {
+                var close = text.IndexOf("```", StringComparison.Ordinal);
+                if (close < 0)
+                {
+                    // Keep only trailing backticks: they may start the closing fence.
+                    var keep = text.Length - text.TrimEnd('`').Length;
+                    _buffer.Clear().Append(text[^Math.Min(keep, 2)..]);
+                    return result;
+                }
+                _buffer.Remove(0, close + 3);
+                _inCode = false;
+                continue;
+            }
+            var open = text.IndexOf("```", StringComparison.Ordinal);
+            // Text that ends in a backtick or two may become a fence: wait for more.
+            var limit = open >= 0 ? open : text.Length - (text.Length - text.TrimEnd('`').Length);
+            var start = Split(text, limit, result);
+            if (open < 0)
+            {
+                _buffer.Remove(0, start);
+                return result;
+            }
+            var before = text[start..open].Trim();
+            if (before.Length > 0)
+            {
+                result.Add(before);
+            }
+            _buffer.Remove(0, open + 3);
+            _inCode = true;
+        }
+    }
+
+    private static int Split(string text, int limit, List<string> result)
+    {
         var start = 0;
-        for (var i = 0; i < text.Length; i++)
+        for (var i = 0; i < limit; i++)
         {
             var c = text[i];
             var end = c is '.' or '!' or '?' or '\n' or ':' or ';';
@@ -23,7 +63,7 @@ public sealed class SentenceSplitter
                 continue;
             }
             // A sentence ends at the mark only when whitespace follows (not "3.5" or "e.g.x").
-            if (i + 1 >= text.Length || !char.IsWhiteSpace(text[i + 1]))
+            if (i + 1 >= limit || !char.IsWhiteSpace(text[i + 1]))
             {
                 if (c != '\n')
                 {
@@ -39,23 +79,24 @@ public sealed class SentenceSplitter
             {
                 if (sentence.Length > 0)
                 {
-                    yield return sentence;
+                    result.Add(sentence);
                 }
                 start = i + 1;
             }
         }
-        _buffer.Remove(0, start);
+        return start;
     }
 
     /// <summary>What is left when the answer is complete.</summary>
     public string? Flush()
     {
-        var rest = _buffer.ToString().Trim();
+        var rest = _inCode ? "" : _buffer.ToString().Trim();
         _buffer.Clear();
+        _inCode = false;
         return rest.Length > 0 ? rest : null;
     }
 
-    private static readonly string[] Abbreviations = ["e.g.", "i.e.", "etc.", "vs.", "mr.", "mrs.", "ms.", "dr.", "no.", "approx."];
+    private static readonly string[] Abbreviations = ["e.g.", "i.e.", "etc.", "vs.", "mr.", "mrs.", "ms.", "dr.", "approx."];
 
     private static bool IsAbbreviation(string sentence)
     {
@@ -71,10 +112,12 @@ public static partial class SpeechText
     public static string ForSpeech(string text)
     {
         var s = CodeBlock().Replace(text, " ");
+        s = Image().Replace(s, " ");
         s = Link().Replace(s, "$1");
         s = Url().Replace(s, "a link");
         s = s.Replace("**", "", StringComparison.Ordinal).Replace("__", "", StringComparison.Ordinal)
-             .Replace("`", "", StringComparison.Ordinal).Replace("#", "", StringComparison.Ordinal);
+             .Replace("`", "", StringComparison.Ordinal);
+        s = Heading().Replace(s, "");
         s = Bullet().Replace(s, "");
         s = Spaces().Replace(s, " ");
         return s.Trim();
@@ -91,6 +134,12 @@ public static partial class SpeechText
 
     [GeneratedRegex(@"```.*?```", RegexOptions.Singleline)]
     private static partial Regex CodeBlock();
+
+    [GeneratedRegex(@"!\[[^\]]*\]\([^)]*\)")]
+    private static partial Regex Image();
+
+    [GeneratedRegex(@"(?m)^\s*#{1,6}\s*")]
+    private static partial Regex Heading();
 
     [GeneratedRegex(@"\[([^\]]+)\]\([^)]+\)")]
     private static partial Regex Link();
@@ -111,7 +160,10 @@ public static class VoiceApproval
     public static Starlight.Tools.ApprovalAnswer? Parse(string heard)
     {
         var t = heard.Trim().TrimEnd('.', '!', ',').Trim().ToLowerInvariant();
-        if (t.StartsWith("always", StringComparison.Ordinal))
+        // Only a clear phrase gives a lasting yes: "always" at the start of a longer sentence
+        // ("always ask me first") must not.
+        string[] always = ["always", "always allow", "always allow it", "always allow this", "always yes", "yes always"];
+        if (always.Contains(t))
         {
             return Starlight.Tools.ApprovalAnswer.Always;
         }
