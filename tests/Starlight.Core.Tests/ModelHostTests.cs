@@ -137,6 +137,26 @@ public sealed class ModelHostTests
     }
 
     [Fact]
+    public async Task Stop_ends_a_long_load_at_once()
+    {
+        Assert.SkipUnless(CanRun, "needs python3 on Linux");
+        var (env, host, argsFile) = Make("hang");
+        using var _ = env;
+        await using var __ = host;
+        var start = host.StartAsync();
+        while (!File.Exists(argsFile))
+        {
+            await Task.Delay(50);
+        }
+        var watch = System.Diagnostics.Stopwatch.StartNew();
+        await host.StopAsync(ModelState.Paused);
+        await start; // ends quietly: the stop was asked for
+
+        Assert.True(watch.Elapsed < TimeSpan.FromSeconds(8), $"Stop took {watch.Elapsed}");
+        Assert.Equal(ModelState.Paused, host.State);
+    }
+
+    [Fact]
     public async Task Missing_model_gives_a_readable_error()
     {
         var (env, host, _) = Make("ok");

@@ -99,15 +99,26 @@ public sealed class ModelHost : IAsyncDisposable
             _stopping = false;
             await StartProcessAsync(ct);
         }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+        {
+            // StopAsync ended the load; the state says Stopped or Paused.
+        }
         finally
         {
             _gate.Release();
         }
     }
 
-    private async Task StartProcessAsync(CancellationToken ct)
+    private CancellationTokenSource? _starting;
+
+    private async Task StartProcessAsync(CancellationToken outer)
     {
         SetState(ModelState.Starting, "Loading the model");
+        Kill(); // a crashed server that is still the current one
+        // StopAsync cancels this, so a stop does not wait for a model load of up to minutes.
+        using var starting = CancellationTokenSource.CreateLinkedTokenSource(outer);
+        _starting = starting;
+        var ct = starting.Token;
         try
         {
             if (!File.Exists(_serverExe))
@@ -133,14 +144,23 @@ public sealed class ModelHost : IAsyncDisposable
             process.ErrorDataReceived += (_, e) => _tail.Add(e.Data);
             process.Exited += (_, _) => OnExited(process);
             process.Start();
+            _process = process;
             process.BeginOutputReadLine();
             process.BeginErrorReadLine();
             if (OperatingSystem.IsWindows())
             {
-                _job ??= new JobObject();
-                _job.Add(process);
+                // Added after the start (output is redirected, so JobObject.Start can't be used). The server
+                // starts no children, so nothing escapes the job in that short gap.
+                try
+                {
+                    _job ??= new JobObject();
+                    _job.Add(process);
+                }
+                catch (Exception ex)
+                {
+                    Log.Warning(ex, "Could not put the model server in the job object");
+                }
             }
-            _process = process;
 
             await WaitForHealthAsync(process, ct);
             _client = CreateClient(BaseUri);
@@ -158,6 +178,18 @@ public sealed class ModelHost : IAsyncDisposable
             Kill();
             SetState(ModelState.Stopped, "Start cancelled");
             throw;
+        }
+        catch (Exception ex)
+        {
+            // Anything else (Windows could not start the file, a bad setting) must not leave the state at Starting.
+            Log.Error(ex, "Model server did not start");
+            Kill();
+            SetState(ModelState.Failed, ex.Message);
+            throw new ModelHostException("The model server did not start: " + ex.Message);
+        }
+        finally
+        {
+            _starting = null;
         }
     }
 
@@ -222,7 +254,8 @@ public sealed class ModelHost : IAsyncDisposable
             await _gate.WaitAsync();
             try
             {
-                if (!_stopping)
+                // Only if nothing else happened meanwhile: a Stop or a new Start replaced the crashed process.
+                if (!_stopping && ReferenceEquals(_process, process))
                 {
                     Log.Warning("Restarting the model server");
                     await StartProcessAsync(CancellationToken.None);
@@ -242,6 +275,14 @@ public sealed class ModelHost : IAsyncDisposable
     /// <summary>Stops the server (game mode, quit, or a model change).</summary>
     public async Task StopAsync(ModelState after = ModelState.Stopped)
     {
+        _stopping = true;
+        try
+        {
+            _starting?.Cancel();
+        }
+        catch (ObjectDisposedException)
+        {
+        }
         await _gate.WaitAsync();
         try
         {

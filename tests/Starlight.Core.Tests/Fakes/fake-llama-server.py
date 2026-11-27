@@ -13,6 +13,8 @@ if mode == "die":
     sys.exit(3)
 if mode == "slow":
     time.sleep(1.0)
+if mode == "hang":
+    time.sleep(120)
 
 class H(http.server.BaseHTTPRequestHandler):
     def do_GET(self):
