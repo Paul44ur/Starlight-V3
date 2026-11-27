@@ -31,12 +31,14 @@ public sealed class Microphone : IDisposable
     {
         lock (_gate)
         {
+            _closed = false;
             if (_capture is not null)
             {
                 return;
             }
             var device = FindDevice();
-            _capture = new WasapiCapture(device, true, 50);
+            var capture = new WasapiCapture(device, true, 50);
+            _capture = capture;
             var format = _capture.WaveFormat;
             Log.Information("Microphone: {Device}, {Rate} Hz, {Channels} ch, {Bits} bit {Encoding}", device.FriendlyName, format.SampleRate, format.Channels, format.BitsPerSample, format.Encoding);
             var isFloat = format.Encoding == NAudio.Wave.WaveFormatEncoding.IeeeFloat
@@ -53,6 +55,19 @@ public sealed class Microphone : IDisposable
                 {
                     Log.Error(e.Exception, "Microphone stopped with an error");
                     _events.Publish(new Notice("The microphone stopped working. Check it in Windows' sound settings.", NoticeLevel.Error));
+                    // Unplugged or failed: drop it, so the next Open (or the retry) starts a fresh capture.
+                    lock (_gate)
+                    {
+                        if (ReferenceEquals(_capture, capture))
+                        {
+                            _capture = null;
+                        }
+                    }
+                    _ = Task.Run(() =>
+                    {
+                        capture.Dispose();
+                        return ReopenAsync();
+                    });
                 }
             };
             _capture.StartRecording();
@@ -110,14 +125,46 @@ public sealed class Microphone : IDisposable
         }
     }
 
+    private bool _closed;
+
+    /// <summary>The wake phrase needs the microphone all the time: after a failure, try again for a minute.</summary>
+    private async Task ReopenAsync()
+    {
+        for (var i = 0; i < 12 && Samples is not null; i++)
+        {
+            await Task.Delay(TimeSpan.FromSeconds(5));
+            lock (_gate)
+            {
+                if (_closed || _capture is not null)
+                {
+                    return;
+                }
+            }
+            try
+            {
+                Open();
+                Log.Information("Microphone opened again");
+                return;
+            }
+            catch (Exception ex)
+            {
+                Log.Warning("Microphone still not available: {Reason}", ex.Message);
+            }
+        }
+    }
+
     public void Close()
     {
+        WasapiCapture? capture;
         lock (_gate)
         {
-            _capture?.StopRecording();
-            _capture?.Dispose();
+            _closed = true;
+            capture = _capture;
             _capture = null;
         }
+        // Outside the lock: stopping waits for the capture thread, which takes the lock in OnChunk.
+        capture?.StopRecording();
+        capture?.Dispose();
     }
 
     public void Dispose() => Close();
