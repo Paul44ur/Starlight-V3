@@ -127,3 +127,23 @@ public sealed class AgentLoopFixTests
         }
     }
 }
+
+public sealed class KillSwitchFixTests
+{
+    [Fact]
+    public void A_hanging_cleanup_does_not_stop_the_others()
+    {
+        var kill = new KillSwitch(new Starlight.Events.EventHub()) { CleanupWait = TimeSpan.FromMilliseconds(200) };
+        using var release = new ManualResetEventSlim();
+        var second = false;
+        kill.RegisterCleanup("hangs", () => release.Wait(TimeSpan.FromSeconds(10)));
+        kill.RegisterCleanup("second", () => second = true);
+
+        var watch = System.Diagnostics.Stopwatch.StartNew();
+        kill.Engage("test");
+        release.Set();
+
+        Assert.True(second);
+        Assert.True(watch.Elapsed < TimeSpan.FromSeconds(5));
+    }
+}

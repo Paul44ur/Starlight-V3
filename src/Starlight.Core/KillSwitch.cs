@@ -4,8 +4,9 @@ using Starlight.Events;
 namespace Starlight;
 
 /// <summary>
-/// One key stops everything. Engaging cancels the shared token, runs every cleanup callback
-/// (release keys, hide the pointer, kill sandboxes) and stays engaged until resumed.
+/// One key stops everything. Engaging cancels the shared token (tools, the code sandbox and SSH commands
+/// stop on it), runs every cleanup callback (release keys, hide the pointer, stop speech) and stays engaged
+/// until resumed. A cleanup that hangs is left behind after a short wait, so it can't hold up the others.
 /// </summary>
 public sealed class KillSwitch(EventHub events)
 {
@@ -14,6 +15,8 @@ public sealed class KillSwitch(EventHub events)
     private readonly List<(string Name, Action Cleanup)> _cleanups = [];
 
     public bool IsEngaged { get; private set; }
+
+    internal TimeSpan CleanupWait { get; init; } = TimeSpan.FromSeconds(2);
 
     /// <summary>Token every task and tool links to. Replaced on resume.</summary>
     public CancellationToken Token
@@ -47,13 +50,20 @@ public sealed class KillSwitch(EventHub events)
         try { cts.Cancel(); } catch (AggregateException ex) { Log.Error(ex, "A cancel callback failed"); }
         foreach (var (name, cleanup) in cleanups)
         {
-            try
+            var run = Task.Run(() =>
             {
-                cleanup();
-            }
-            catch (Exception ex)
+                try
+                {
+                    cleanup();
+                }
+                catch (Exception ex)
+                {
+                    Log.Error(ex, "Kill-switch cleanup {Name} failed", name);
+                }
+            });
+            if (!run.Wait(CleanupWait))
             {
-                Log.Error(ex, "Kill-switch cleanup {Name} failed", name);
+                Log.Error("Kill-switch cleanup {Name} did not finish in {Ms} ms", name, CleanupWait.TotalMilliseconds);
             }
         }
         events.Publish(new KillSwitchChanged(true, reason));
