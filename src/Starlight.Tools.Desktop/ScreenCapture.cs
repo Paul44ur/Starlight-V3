@@ -13,9 +13,14 @@ public sealed class Screenshot(Bitmap image, ScreenRect area) : IDisposable
     public ScreenRect Area { get; } = area;
 
     /// <summary>PNG bytes, shrunk so the longer side is at most <paramref name="maxSide"/> (vision models see ~1 MP at most).</summary>
-    public byte[] ToPng(int maxSide = 1344)
+    public const int PictureMaxSide = 1344;
+
+    /// <summary>Where the picture from <see cref="ToPng"/> sits and its scale, to map x,y back.</summary>
+    public PictureFrame Frame(int maxSide = PictureMaxSide) => new(Area, TargetParser.PictureScale(Image.Width, Image.Height, maxSide));
+
+    public byte[] ToPng(int maxSide = PictureMaxSide)
     {
-        var scale = Math.Min(1.0, (double)maxSide / Math.Max(Image.Width, Image.Height));
+        var scale = TargetParser.PictureScale(Image.Width, Image.Height, maxSide);
         using var ms = new MemoryStream();
         if (scale >= 1)
         {
@@ -23,7 +28,7 @@ public sealed class Screenshot(Bitmap image, ScreenRect area) : IDisposable
         }
         else
         {
-            using var small = new Bitmap((int)(Image.Width * scale), (int)(Image.Height * scale));
+            using var small = new Bitmap(Math.Max(1, (int)(Image.Width * scale)), Math.Max(1, (int)(Image.Height * scale)));
             using (var g = Graphics.FromImage(small))
             {
                 g.InterpolationMode = InterpolationMode.HighQualityBicubic;

@@ -17,8 +17,22 @@ public static class Ocr
         var engine = OcrEngine.TryCreateFromUserProfileLanguages()
             ?? OcrEngine.TryCreateFromLanguage(new Windows.Globalization.Language("en-US"))
             ?? throw new ToolException("Windows OCR is not available. Add the English language pack in Windows settings.");
+        // Windows OCR refuses images larger than MaxImageDimension (three 4K screens side by side).
+        var scale = Math.Min(1.0, (double)OcrEngine.MaxImageDimension / Math.Max(shot.Image.Width, shot.Image.Height));
         using var ms = new MemoryStream();
-        shot.Image.Save(ms, ImageFormat.Bmp);
+        if (scale < 1)
+        {
+            using var small = new System.Drawing.Bitmap(Math.Max(1, (int)(shot.Image.Width * scale)), Math.Max(1, (int)(shot.Image.Height * scale)));
+            using (var g = System.Drawing.Graphics.FromImage(small))
+            {
+                g.DrawImage(shot.Image, 0, 0, small.Width, small.Height);
+            }
+            small.Save(ms, ImageFormat.Bmp);
+        }
+        else
+        {
+            shot.Image.Save(ms, ImageFormat.Bmp);
+        }
         using var stream = new InMemoryRandomAccessStream();
         await stream.WriteAsync(ms.ToArray().AsBuffer()).AsTask(ct);
         stream.Seek(0);
@@ -38,7 +52,7 @@ public static class Ocr
             }
             if (line.Words.Count > 0)
             {
-                lines.Add(new OcrLine(line.Text, new ScreenRect(shot.Area.X + (int)l, shot.Area.Y + (int)t, (int)(r - l), (int)(b - t))));
+                lines.Add(new OcrLine(line.Text, new ScreenRect(shot.Area.X + (int)(l / scale), shot.Area.Y + (int)(t / scale), (int)((r - l) / scale), (int)((b - t) / scale))));
             }
         }
         return lines;

@@ -158,3 +158,23 @@ public sealed class AppMatcherFixTests
         Assert.Equal(1, AppMatcher.PickWindow("notes.txt - Notepad", Windows, unique: true, out _));
     }
 }
+
+public sealed class PictureCoordinateTests
+{
+    [Fact]
+    public void Picture_points_map_back_to_screen_pixels()
+    {
+        // A 2688x1512 window at 100,50, shown to the model at half size.
+        var frame = new PictureFrame(new Starlight.Events.ScreenRect(100, 50, 2688, 1512), TargetParser.PictureScale(2688, 1512, 1344));
+        Assert.Equal(0.5, frame.Scale);
+        Assert.Equal((100 + 400, 50 + 200), TargetParser.PictureToScreen(200, 100, frame));
+    }
+
+    [Fact]
+    public void Small_pictures_are_not_scaled()
+    {
+        Assert.Equal(1.0, TargetParser.PictureScale(800, 600, 1344));
+        var frame = new PictureFrame(new Starlight.Events.ScreenRect(-1920, 0, 800, 600), 1.0);
+        Assert.Equal((-1920 + 10, 20), TargetParser.PictureToScreen(10, 20, frame));
+    }
+}

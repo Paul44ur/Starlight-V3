@@ -6,8 +6,22 @@ namespace Starlight.Tools.Desktop;
 /// <summary>What the model named as a target: an element number, screen coordinates, or a name. Plain logic, tested in the container.</summary>
 public sealed record TargetSpec(int? Element, (int X, int Y)? Point, string? Name);
 
+/// <summary>Where the last screen_look picture sits on the desktop and how much it was shrunk.</summary>
+public sealed record PictureFrame(Starlight.Events.ScreenRect Area, double Scale);
+
 public static partial class TargetParser
 {
+    /// <summary>How much a picture is shrunk so its longer side is at most <paramref name="maxSide"/>.</summary>
+    public static double PictureScale(int width, int height, int maxSide) =>
+        Math.Min(1.0, (double)maxSide / Math.Max(1, Math.Max(width, height)));
+
+    /// <summary>
+    /// The model reads x,y off the picture it was shown, which starts at the window's corner and may
+    /// be shrunk. This turns them back into physical screen pixels.
+    /// </summary>
+    public static (int X, int Y) PictureToScreen(int x, int y, PictureFrame frame) =>
+        (frame.Area.X + (int)Math.Round(x / frame.Scale), frame.Area.Y + (int)Math.Round(y / frame.Scale));
+
     public static TargetSpec Parse(string target)
     {
         var t = target.Trim();

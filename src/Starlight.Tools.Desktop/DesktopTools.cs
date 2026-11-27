@@ -14,6 +14,9 @@ public sealed class DesktopTools(UiSnapshot ui, EventHub events, Func<bool> hasV
 {
     private sealed record Found(ScreenRect Box, string Label, bool Exact, string How);
 
+    /// <summary>The last picture the model saw, so its x,y can be mapped to the screen.</summary>
+    private PictureFrame? _lastPicture;
+
     [Tool("screen_look", TimeoutSeconds = 30)]
     [Description("Looks at the front window: its title and a numbered list of its buttons, fields and links, plus a picture or the text on screen. Use it before clicking or typing, and to answer questions about what is on screen.")]
     public async Task<ToolOutput> Look(
@@ -33,8 +36,12 @@ public sealed class DesktopTools(UiSnapshot ui, EventHub events, Func<bool> hasV
         }
         if (hasVision())
         {
+            var frame = shot.Frame();
+            _lastPicture = frame;
+            text.AppendLine($"Picture: {(int)(shot.Area.Width * frame.Scale)}x{(int)(shot.Area.Height * frame.Scale)} pixels. Prefer control numbers; x,y means a point in this picture.");
             return new ToolOutput(text.ToString().TrimEnd(), [new DataContent(shot.ToPng(), "image/png")]);
         }
+        _lastPicture = null;
         var lines = await Ocr.ReadAsync(shot, ct);
         text.AppendLine("Text on screen:");
         foreach (var l in lines.Take(80))
@@ -55,7 +62,7 @@ public sealed class DesktopTools(UiSnapshot ui, EventHub events, Func<bool> hasV
     [Tool("screen_point", TimeoutSeconds = 20)]
     [Description("Shows the user where something is: draws a line from the orb to it and a frame around it. Use it to answer \"where is…\" questions.")]
     public async Task<string> Point(
-        [Description("A control number from screen_look, a name like \"Save\", or x,y")] string target,
+        [Description("A control number from screen_look, a name like \"Save\", or x,y in the last screen_look picture")] string target,
         [Description("Short label to show next to it")] string? label = null,
         CancellationToken ct = default)
     {
@@ -67,7 +74,7 @@ public sealed class DesktopTools(UiSnapshot ui, EventHub events, Func<bool> hasV
     [Tool("input_click", Permission.Ask, TimeoutSeconds = 20)]
     [Description("Clicks a control. Look first with screen_look and give the control's number, or its name, or x,y.")]
     public async Task<string> Click(
-        [Description("A control number from screen_look, a name, or x,y")] string target,
+        [Description("A control number from screen_look, a name, or x,y in the last screen_look picture")] string target,
         [Description("left (default), right or middle")] string? button = null,
         [Description("true for a double-click")] bool doubleClick = false,
         CancellationToken ct = default)
@@ -81,7 +88,7 @@ public sealed class DesktopTools(UiSnapshot ui, EventHub events, Func<bool> hasV
     [Description("Types text into the focused field, or into a field you name first. Never use it for passwords.")]
     public async Task<string> Type(
         [Description("The text to type")] string text,
-        [Description("Optional field to click first: a control number, a name, or x,y")] string? target = null,
+        [Description("Optional field to click first: a control number, a name, or x,y in the last screen_look picture")] string? target = null,
         [Description("true to press Enter afterwards")] bool pressEnter = false,
         CancellationToken ct = default)
     {
@@ -197,7 +204,10 @@ public sealed class DesktopTools(UiSnapshot ui, EventHub events, Func<bool> hasV
         var spec = TargetParser.Parse(target);
         if (spec.Point is { } p)
         {
-            return new Found(new ScreenRect(p.X - 10, p.Y - 10, 20, 20), $"{p.X},{p.Y}", false, "coordinates");
+            // x,y come from the last picture (shrunk, starting at the window's corner); without one
+            // they are screen pixels.
+            var (sx, sy) = _lastPicture is { } frame ? TargetParser.PictureToScreen(p.X, p.Y, frame) : p;
+            return new Found(new ScreenRect(sx - 10, sy - 10, 20, 20), $"{p.X},{p.Y}", false, _lastPicture is null ? "screen coordinates" : "picture coordinates");
         }
         if (spec.Element is { } n)
         {
