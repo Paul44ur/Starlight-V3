@@ -76,15 +76,32 @@ public sealed class Downloader(HttpClient http)
             {
                 Directory.Delete(temp, true);
             }
-            await using (var archive = File.OpenRead(part))
+            try
             {
-                Unpack(archive, temp);
+                await using (var archive = File.OpenRead(part))
+                {
+                    Unpack(archive, temp);
+                }
+            }
+            catch
+            {
+                // A broken archive must not stay behind: the next try downloads it fresh.
+                TryDelete(() => Directory.Delete(temp, true));
+                TryDelete(() => File.Delete(part));
+                throw;
+            }
+            // Swap: the old folder is kept until the new one is in place.
+            var old = target + ".old";
+            if (Directory.Exists(old))
+            {
+                Directory.Delete(old, true);
             }
             if (Directory.Exists(target))
             {
-                Directory.Delete(target, true);
+                Directory.Move(target, old);
             }
             Directory.Move(temp, target);
+            TryDelete(() => Directory.Delete(old, true));
             File.Delete(part);
         }
         Log.Information("Downloaded {Item} to {Target}", item.Id, target);
@@ -106,7 +123,18 @@ public sealed class Downloader(HttpClient http)
                 using var response = await http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct);
                 if (response.StatusCode == System.Net.HttpStatusCode.RequestedRangeNotSatisfiable)
                 {
-                    return; // already complete
+                    // Complete only if the server says the file has exactly the bytes we have ("bytes */total").
+                    if (response.Content.Headers.ContentRange?.Length == have)
+                    {
+                        return;
+                    }
+                    Log.Warning("Download of {Item}: the partial file does not fit the server's file; starting over", item.Id);
+                    File.Delete(part);
+                    if (attempt >= 4)
+                    {
+                        throw new IOException($"{item.Title}: the server refused to resume the download.");
+                    }
+                    continue;
                 }
                 response.EnsureSuccessStatusCode();
                 var resumed = response.StatusCode == System.Net.HttpStatusCode.PartialContent;
@@ -139,6 +167,18 @@ public sealed class Downloader(HttpClient http)
                 Log.Warning(ex, "Download of {Item} broke off (try {Attempt}); resuming", item.Id, attempt);
                 await Task.Delay(TimeSpan.FromSeconds(2 * attempt), ct);
             }
+        }
+    }
+
+    private static void TryDelete(Action delete)
+    {
+        try
+        {
+            delete();
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            Log.Warning(ex, "Could not clean up after a download");
         }
     }
 

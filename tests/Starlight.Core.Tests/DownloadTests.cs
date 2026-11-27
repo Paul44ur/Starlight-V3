@@ -18,6 +18,12 @@ internal sealed class RangeServer(byte[] body) : HttpMessageHandler
         var from = request.Headers.Range?.Ranges.First().From;
         RangesAsked.Add(from);
         var start = (int)(from ?? 0);
+        if (start >= body.Length)
+        {
+            var refused = new HttpResponseMessage(HttpStatusCode.RequestedRangeNotSatisfiable) { Content = new ByteArrayContent([]) };
+            refused.Content.Headers.ContentRange = new ContentRangeHeaderValue(body.Length);
+            return Task.FromResult(refused);
+        }
         var slice = body[start..];
         if (BreakAfter > 0)
         {
@@ -110,5 +116,33 @@ public sealed class DownloadTests
         archive.Position = 0;
         Assert.Throws<InvalidDataException>(() => Downloader.Unpack(archive, Path.Combine(env.Root, "out")));
         Assert.False(File.Exists(Path.Combine(env.Root, "evil.txt")));
+    }
+
+    [Fact]
+    public async Task A_part_file_longer_than_the_real_file_is_downloaded_again()
+    {
+        using var env = new TestEnv();
+        var body = Body(1000);
+        var server = new RangeServer(body);
+        var item = new DownloadItem("x", "X", new Uri("https://example.test/x.bin"), Convert.ToHexString(SHA256.HashData(body)), body.Length, DownloadKind.File, "x.bin", true);
+        await File.WriteAllBytesAsync(Path.Combine(env.Root, "x.bin.part"), new byte[1500]);
+
+        var path = await new Downloader(new HttpClient(server)).FetchAsync(item, env.Root, null, default);
+
+        Assert.Equal(body, await File.ReadAllBytesAsync(path));
+        Assert.Equal([1500L, null], server.RangesAsked);
+    }
+
+    [Fact]
+    public async Task A_broken_archive_leaves_nothing_behind()
+    {
+        using var env = new TestEnv();
+        var junk = Body(5000);
+        var item = new DownloadItem("k", "K", new Uri("https://example.test/k.tar.bz2"), Convert.ToHexString(SHA256.HashData(junk)), junk.Length, DownloadKind.TarBz2, "voice/kokoro", true);
+
+        await Assert.ThrowsAnyAsync<Exception>(() => new Downloader(new HttpClient(new RangeServer(junk))).FetchAsync(item, env.Root, null, default));
+
+        var voice = Path.Combine(env.Root, "voice");
+        Assert.Empty(Directory.GetFileSystemEntries(voice));
     }
 }
