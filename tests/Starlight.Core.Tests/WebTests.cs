@@ -405,4 +405,73 @@ public sealed class WebTests
         var r = await rig.Call("web_login", ("site", "github"));
         Assert.Contains("Settings > Web", r.Text);
     }
+
+    [Fact]
+    public async Task A_refused_password_is_sent_only_once()
+    {
+        using var rig = new Rig();
+        rig.Env.Settings.Update(s => s.Web.Logins.Add(new WebLogin { Name = "Example", LoginUrl = "https://example.com/login" }));
+        rig.Secrets.Set("login/example.com", "me", "wrongpw");
+        rig.Browser.States.AddRange(["password", "password", "password"]);
+
+        await rig.Call("web_login", ("site", "Example"));
+
+        Assert.Single(rig.Browser.Scripts, s => s.Contains("wrongpw", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task A_duckduckgo_bot_check_is_not_reported_as_no_results()
+    {
+        using var rig = new Rig();
+        rig.Web.Pages[SearchEngines.DuckDuckGoUri.ToString()] = (202, "text/html", "<html><body><div class=anomaly-modal>Unfortunately, bots use DuckDuckGo too.</div></body></html>");
+
+        var r = await rig.Call("web_search", ("query", "green tea"));
+
+        Assert.False(r.Ok);
+        Assert.Contains("blocked", r.Text);
+        Assert.False(SearchEngines.IsDuckDuckGoBlock(200, "<div class=\"no-results\">No results.</div>"));
+    }
+
+    private sealed class SlowWeb : HttpMessageHandler
+    {
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
+        {
+            await Task.Delay(TimeSpan.FromSeconds(10), ct);
+            return new HttpResponseMessage(HttpStatusCode.OK);
+        }
+    }
+
+    [Fact]
+    public async Task A_slow_site_is_reported_as_a_timeout_not_as_cancelled()
+    {
+        using var http = new WebHttp(new PoliteLimiter(() => 1000), new SlowWeb(), timeout: TimeSpan.FromMilliseconds(200));
+        var ex = await Assert.ThrowsAsync<HttpRequestException>(() => http.GetAsync(new Uri("https://slow.example/"), default));
+        Assert.Contains("did not answer", ex.Message);
+    }
+}
+
+public sealed class PageTextFixTests
+{
+    [Fact]
+    public void Very_deep_html_does_not_overflow()
+    {
+        var html = "<html><body><main>" + string.Concat(Enumerable.Repeat("<div>", 20000)) + "deep words here" + "</main></body></html>";
+        Assert.Contains("deep words here", PageText.Clean(html).Text);
+    }
+
+    [Fact]
+    public void A_page_wrapped_in_a_form_keeps_its_text_and_a_search_form_goes()
+    {
+        var page = "<html><body><form id=aspnetForm><div><p>First paragraph of the article.</p><p>Second one.</p><p>Third one.</p></div></form></body></html>";
+        Assert.Contains("Second one.", PageText.Clean(page).Text);
+        var search = "<html><body><main><form><input name=q><p>Search the site</p></form><p>Real text.</p></main></body></html>";
+        Assert.DoesNotContain("Search the site", PageText.Clean(search).Text);
+    }
+
+    [Fact]
+    public void Inline_parts_of_one_word_stay_together()
+    {
+        var text = PageText.Clean("<html><body><main><p><b>Star</b>light is <i>here</i>.</p></main></body></html>").Text;
+        Assert.Equal("Starlight is here.", text);
+    }
 }

@@ -54,6 +54,13 @@ public static class SearchEngines
             .Where(h => h.Url.Length > 0).ToList();
     }
 
+    /// <summary>DuckDuckGo answers a bot check with 202 or an "anomaly" page instead of results. That is not "no results".</summary>
+    public static bool IsDuckDuckGoBlock(int status, string html) =>
+        status == 202
+        || html.Contains("anomaly", StringComparison.OrdinalIgnoreCase)
+        || html.Contains("challenge-form", StringComparison.OrdinalIgnoreCase)
+        || !html.Contains("no-results", StringComparison.OrdinalIgnoreCase) && !html.Contains("result", StringComparison.OrdinalIgnoreCase);
+
     public static List<SearchHit> ParseDuckDuckGo(string html)
     {
         var doc = new HtmlParser().ParseDocument(html);

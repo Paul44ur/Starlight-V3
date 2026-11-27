@@ -13,7 +13,7 @@ public sealed record CleanPage(string Title, string Text, bool NeedsScripts)
 /// no menus, scripts, styles or forms.</summary>
 public static class PageText
 {
-    private static readonly string[] Drop = ["script", "style", "noscript", "template", "svg", "canvas", "iframe", "form", "nav", "footer", "aside", "button", "select", "dialog"];
+    private static readonly string[] Drop = ["script", "style", "noscript", "template", "svg", "canvas", "iframe", "nav", "footer", "aside", "button", "select", "dialog"];
     private static readonly string[] DropRoles = ["navigation", "banner", "contentinfo", "complementary", "search", "dialog", "alert"];
     private static readonly HashSet<string> Blocks = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -28,6 +28,14 @@ public static class PageText
         foreach (var e in doc.QuerySelectorAll(string.Join(',', Drop)).ToList())
         {
             e.Remove();
+        }
+        // Forms are mostly search boxes and sign-ups, but some sites (ASP.NET WebForms) wrap the whole page in one.
+        foreach (var f in doc.QuerySelectorAll("form").ToList())
+        {
+            if (f.QuerySelector("main, article, [role=main]") is null && f.QuerySelectorAll("p").Length < 3)
+            {
+                f.Remove();
+            }
         }
         foreach (var e in doc.QuerySelectorAll("[role]").Where(e => DropRoles.Contains(e.GetAttribute("role"), StringComparer.OrdinalIgnoreCase)).ToList())
         {
@@ -51,7 +59,7 @@ public static class PageText
             }
         }
         var sb = new StringBuilder();
-        Walk(root, sb);
+        Walk(root, sb, 0);
         var lines = sb.ToString().Split('\n').Select(l => l.Trim()).ToList();
         var text = new StringBuilder();
         var blank = false;
@@ -74,8 +82,16 @@ public static class PageText
         return new CleanPage(title, result, needsScripts);
     }
 
-    private static void Walk(INode node, StringBuilder sb)
+    /// <summary>Deeper than this, a page is read as flat text: hostile HTML must not overflow the stack.</summary>
+    private const int MaxDepth = 150;
+
+    private static void Walk(INode node, StringBuilder sb, int depth)
     {
+        if (depth > MaxDepth)
+        {
+            sb.Append(' ').Append(Squash(node.TextContent)).Append(' ');
+            return;
+        }
         foreach (var child in node.ChildNodes)
         {
             if (child is IText t)
@@ -83,11 +99,20 @@ public static class PageText
                 var s = Squash(t.Data);
                 if (s.Length > 0)
                 {
-                    if (sb.Length > 0 && sb[^1] != '\n' && sb[^1] != ' ')
+                    // A space only where the page has one: "<b>Star</b>light" stays one word.
+                    if (sb.Length > 0 && sb[^1] != '\n' && sb[^1] != ' ' && char.IsWhiteSpace(t.Data[0]))
                     {
                         sb.Append(' ');
                     }
                     sb.Append(s);
+                    if (char.IsWhiteSpace(t.Data[^1]))
+                    {
+                        sb.Append(' ');
+                    }
+                }
+                else if (t.Data.Length > 0 && sb.Length > 0 && sb[^1] != '\n' && sb[^1] != ' ')
+                {
+                    sb.Append(' ');
                 }
                 continue;
             }
@@ -118,7 +143,7 @@ public static class PageText
             {
                 sb.Append("[image: ").Append(Squash(alt)).Append(']');
             }
-            Walk(e, sb);
+            Walk(e, sb, depth + 1);
             if (block)
             {
                 sb.Append('\n');

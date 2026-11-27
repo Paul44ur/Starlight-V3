@@ -15,7 +15,7 @@ public sealed class WebHttp : IDisposable
     private readonly PoliteLimiter _limiter;
 
     /// <param name="publicOnly">False only for addresses the user typed in Settings (their own SearXNG).</param>
-    public WebHttp(PoliteLimiter limiter, HttpMessageHandler? handler = null, bool publicOnly = true)
+    public WebHttp(PoliteLimiter limiter, HttpMessageHandler? handler = null, bool publicOnly = true, TimeSpan? timeout = null)
     {
         _limiter = limiter;
         handler ??= new SocketsHttpHandler
@@ -27,7 +27,7 @@ public sealed class WebHttp : IDisposable
             PooledConnectionLifetime = TimeSpan.FromMinutes(5),
             UseCookies = false,
         };
-        _client = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(20) };
+        _client = new HttpClient(handler) { Timeout = timeout ?? TimeSpan.FromSeconds(20) };
         _client.DefaultRequestHeaders.UserAgent.ParseAdd(UserAgent);
         _client.DefaultRequestHeaders.Accept.ParseAdd("text/html,application/xhtml+xml,application/json;q=0.9,text/plain;q=0.8,*/*;q=0.5");
         _client.DefaultRequestHeaders.AcceptLanguage.ParseAdd("en;q=0.9,*;q=0.5");
@@ -41,7 +41,17 @@ public sealed class WebHttp : IDisposable
         {
             request.Headers.TryAddWithoutValidation(n, v);
         }
-        using var response = await _client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct);
+        HttpResponseMessage sent;
+        try
+        {
+            sent = await _client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct);
+        }
+        catch (TaskCanceledException ex) when (!ct.IsCancellationRequested)
+        {
+            // HttpClient's own timeout, not the user: say so instead of "Cancelled".
+            throw new HttpRequestException($"{url.Host} did not answer within {_client.Timeout.TotalSeconds:0} seconds.", ex);
+        }
+        using var response = sent;
         var type = response.Content.Headers.ContentType?.MediaType ?? "";
         await using var stream = await response.Content.ReadAsStreamAsync(ct);
         using var buffer = new MemoryStream();

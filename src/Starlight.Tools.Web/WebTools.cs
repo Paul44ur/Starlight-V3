@@ -110,8 +110,13 @@ public sealed class WebTools(
                 var page = await ReadPageAsync(uri, ct);
                 return new SourceRead(h, page.Text, null);
             }
-            catch (Exception ex) when (ex is ToolException or HttpRequestException or TaskCanceledException && !ct.IsCancellationRequested)
+            catch (Exception ex) when (!ct.IsCancellationRequested)
             {
+                // One bad source must not end the whole research.
+                if (ex is not (ToolException or HttpRequestException or TaskCanceledException))
+                {
+                    Log.Warning(ex, "Reading a research source failed: {Url}", h.Url);
+                }
                 return new SourceRead(h, null, ex is TaskCanceledException ? "too slow" : ex.Message);
             }
         }));
@@ -157,15 +162,18 @@ public sealed class WebTools(
         var state = "";
         for (var round = 0; round < 3; round++)
         {
-            state = await page.EvaluateAsync(LoginScripts.Fill(secret.UserName, secret.Secret), ct);
-            if (state is "nofields")
+            var filled = await page.EvaluateAsync(LoginScripts.Fill(secret.UserName, secret.Secret), ct);
+            if (filled is "nofields")
             {
+                state = filled;
                 break;
             }
             await page.WaitForLoadAsync(TimeSpan.FromSeconds(12), ct);
             await Task.Delay(1000, ct);
             state = await page.EvaluateAsync(LoginScripts.State, ct);
-            if (state != "password")
+            // Another round only after a user-name-only step. The password is sent once: if the field is
+            // still there after that, it was refused, and sending it again could lock the account.
+            if (state != "password" || filled != "user-only")
             {
                 break;
             }
@@ -217,7 +225,12 @@ public sealed class WebTools(
                     var form = new FormUrlEncodedContent([new("q", query), new("kl", "wt-wt")]);
                     var dd = await http.GetAsync(SearchEngines.DuckDuckGoUri, ct, post: form);
                     Check(dd, "DuckDuckGo");
-                    return (SearchEngines.ParseDuckDuckGo(dd.Body), "DuckDuckGo");
+                    var ddHits = SearchEngines.ParseDuckDuckGo(dd.Body);
+                    if (ddHits.Count == 0 && SearchEngines.IsDuckDuckGoBlock(dd.Status, dd.Body))
+                    {
+                        throw new ToolException("DuckDuckGo blocked the search for now. Try again later, or set up Brave Search or SearXNG in Settings > Web.");
+                    }
+                    return (ddHits, "DuckDuckGo");
             }
         }
         catch (HttpRequestException ex)

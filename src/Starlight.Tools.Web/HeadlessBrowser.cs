@@ -75,9 +75,18 @@ public sealed class EdgeBrowser(string profileDir, string? exe = null) : IBrowse
         var targetId = target["targetId"]!.GetValue<string>();
         var attached = await cdp.SendAsync("Target.attachToTarget", new JsonObject { ["targetId"] = targetId, ["flatten"] = true }, null, ct);
         var page = new CdpPage(cdp, targetId, attached["sessionId"]!.GetValue<string>(), url, Allow);
-        await page.InitAsync(cookies, ct);
-        await page.NavigateAsync(url, ct);
-        return page;
+        try
+        {
+            await page.InitAsync(cookies, ct);
+            await page.NavigateAsync(url, ct);
+            return page;
+        }
+        catch
+        {
+            // The tab and its request handler must not stay behind.
+            await page.DisposeAsync();
+            throw;
+        }
     }
 
     private async Task<Cdp> StartAsync(CancellationToken ct)
@@ -312,7 +321,8 @@ internal sealed class CdpPage(Cdp cdp, string targetId, string sessionId, Uri ur
 
     public async Task<IReadOnlyList<BrowserCookie>> CookiesAsync(CancellationToken ct)
     {
-        var r = await cdp.SendAsync("Network.getAllCookies", null, sessionId, ct);
+        // Only the cookies for this page's address, not every cookie in the shared browser profile.
+        var r = await cdp.SendAsync("Network.getCookies", new JsonObject { ["urls"] = new JsonArray(Url.AbsoluteUri) }, sessionId, ct);
         return r["cookies"]?.AsArray().Select(c => new BrowserCookie(
             c!["name"]!.GetValue<string>(), c["value"]!.GetValue<string>(), c["domain"]!.GetValue<string>(), c["path"]!.GetValue<string>(),
             c["expires"]?.GetValue<double>() ?? -1, c["httpOnly"]?.GetValue<bool>() ?? false, c["secure"]?.GetValue<bool>() ?? false,
