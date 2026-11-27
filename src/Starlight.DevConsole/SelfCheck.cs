@@ -168,8 +168,9 @@ internal static partial class SelfCheck
             {
                 return "SKIP: no Python";
             }
-            var r = await Script("import socket\nsocket.create_connection(('1.1.1.1', 80), timeout=5)\nprint('CONNECTED')");
-            return r.ExitCode != 0 && !r.Output.Contains("CONNECTED", StringComparison.Ordinal) ? "connection refused in the sandbox" : throw new InvalidOperationException("the script reached the network");
+            // BLOCKED proves the script ran and was refused; a script that failed for another reason does not pass.
+            var r = await Script("import socket\ntry:\n    socket.create_connection(('1.1.1.1', 80), timeout=5)\n    print('CONNECTED')\nexcept OSError as e:\n    print('BLOCKED', type(e).__name__)");
+            return r.Output.Contains("BLOCKED", StringComparison.Ordinal) && !r.Output.Contains("CONNECTED", StringComparison.Ordinal) ? "connection refused in the sandbox" : throw new InvalidOperationException("the network check did not show a refusal: " + r.Output);
         });
         await Check("Sandbox can't write outside its folder", async () =>
         {
@@ -178,13 +179,13 @@ internal static partial class SelfCheck
                 return "SKIP: no Python";
             }
             var target = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "starlight-selfcheck.txt");
-            var r = await Script($"open(r'{target}', 'w').write('x')\nprint('WROTE')");
+            var r = await Script($"try:\n    open(r'{target}', 'w').write('x')\n    print('WROTE')\nexcept OSError as e:\n    print('BLOCKED', type(e).__name__)");
             var wrote = File.Exists(target);
             if (wrote)
             {
                 File.Delete(target);
             }
-            return !wrote && r.ExitCode != 0 ? "write to the user folder refused" : throw new InvalidOperationException("the script wrote outside its folder");
+            return !wrote && r.Output.Contains("BLOCKED", StringComparison.Ordinal) ? "write to the user folder refused" : throw new InvalidOperationException("the write check did not show a refusal: " + r.Output);
         });
         await Check("Sandbox can't start programs", async () =>
         {
@@ -192,8 +193,8 @@ internal static partial class SelfCheck
             {
                 return "SKIP: no Python";
             }
-            var r = await Script("import subprocess\nsubprocess.run(['cmd', '/c', 'echo', 'CHILD'])\nprint('STARTED')");
-            return !r.Output.Contains("STARTED", StringComparison.Ordinal) ? "child process refused" : throw new InvalidOperationException("a child process started: " + r.Output);
+            var r = await Script("import subprocess\ntry:\n    subprocess.run(['cmd', '/c', 'echo', 'CHILD'])\n    print('STARTED')\nexcept OSError as e:\n    print('BLOCKED', type(e).__name__)");
+            return r.Output.Contains("BLOCKED", StringComparison.Ordinal) && !r.Output.Contains("STARTED", StringComparison.Ordinal) ? "child process refused" : throw new InvalidOperationException("the process check did not show a refusal: " + r.Output);
         });
 
         await Check("Voice files", () =>

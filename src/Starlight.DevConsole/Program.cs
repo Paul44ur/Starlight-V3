@@ -27,6 +27,10 @@ string? Opt(string name)
 var dataDir = Opt("--data") ?? Environment.GetEnvironmentVariable("STARLIGHT_DATA")
     ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Starlight");
 var paths = new StarlightPaths(dataDir, AppContext.BaseDirectory);
+if (Opt("--data") is null && Environment.GetEnvironmentVariable("STARLIGHT_DATA") is null)
+{
+    Console.WriteLine($"Note: this uses the real Starlight data in {dataDir} (settings, memory, saved logins). Pass --data <folder> for a separate one.");
+}
 using var core = AssistantCore.Start(paths, new ConsoleApprovals());
 if (argv.Contains("--selfcheck"))
 {
