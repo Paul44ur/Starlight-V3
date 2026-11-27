@@ -17,10 +17,12 @@ public sealed class SessionVault(string dir, Func<byte[], byte[]>? protect = nul
         {
             return string.Join('.', labels);
         }
-        // Country domains with a second level, such as co.uk or com.au.
-        var take = labels[^2].Length <= 3 && labels[^1].Length == 2 ? 3 : 2;
+        // Country domains with a known second level, such as co.uk or com.au (but not bbc.de or gmx.at).
+        var take = labels[^1].Length == 2 && SecondLevels.Contains(labels[^2]) ? 3 : 2;
         return string.Join('.', labels[^take..]);
     }
+
+    private static readonly HashSet<string> SecondLevels = ["co", "com", "net", "org", "gov", "edu", "ac", "ne", "or", "go", "gob", "gv", "mil", "nic", "ltd", "plc", "sch", "nhs", "lg", "ad", "ed", "gr", "info", "biz", "nom", "web"];
 
     public void Save(string host, IEnumerable<BrowserCookie> cookies)
     {

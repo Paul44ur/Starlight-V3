@@ -69,17 +69,31 @@ public sealed class WebHttp : IDisposable
         return new FetchedPage(response.RequestMessage?.RequestUri ?? url, (int)response.StatusCode, type, body);
     }
 
-    private static string Decode(byte[] bytes, MediaTypeHeaderValue? type)
+    static WebHttp() => Encoding.RegisterProvider(CodePagesEncodingProvider.Instance); // windows-1252, Shift_JIS and others
+
+    internal static string Decode(byte[] bytes, MediaTypeHeaderValue? type)
     {
-        try
+        // The header first, then a byte order mark, then <meta charset> in the first bytes of the page.
+        var name = type?.CharSet?.Trim('"');
+        if (string.IsNullOrEmpty(name))
         {
-            if (type?.CharSet is { Length: > 0 } cs)
+            if (bytes.AsSpan().StartsWith(Encoding.UTF8.Preamble))
             {
-                return Encoding.GetEncoding(cs.Trim('"')).GetString(bytes);
+                return Encoding.UTF8.GetString(bytes, 3, bytes.Length - 3);
             }
+            var head = Encoding.ASCII.GetString(bytes, 0, Math.Min(bytes.Length, 2048));
+            var m = System.Text.RegularExpressions.Regex.Match(head, @"<meta[^>]+charset\s*=\s*[""']?([A-Za-z0-9_\-:.]+)", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+            name = m.Success ? m.Groups[1].Value : null;
         }
-        catch (ArgumentException)
+        if (!string.IsNullOrEmpty(name))
         {
+            try
+            {
+                return Encoding.GetEncoding(name).GetString(bytes);
+            }
+            catch (ArgumentException)
+            {
+            }
         }
         return Encoding.UTF8.GetString(bytes);
     }

@@ -475,3 +475,21 @@ public sealed class PageTextFixTests
         Assert.Equal("Starlight is here.", text);
     }
 }
+
+public sealed class WebHttpFixTests
+{
+    [Theory]
+    [InlineData("www.bbc.de", "bbc.de")]
+    [InlineData("mail.gmx.at", "gmx.at")]
+    [InlineData("shop.example.com.au", "example.com.au")]
+    public void Site_of_a_country_domain(string host, string site) => Assert.Equal(site, SessionVault.SiteOf(host));
+
+    [Fact]
+    public void Meta_charset_and_legacy_encodings_are_read()
+    {
+        var latin = System.Text.Encoding.Latin1.GetBytes("<html><head><meta charset=\"windows-1252\"></head><body>Café über</body></html>");
+        Assert.Contains("Café über", WebHttp.Decode(latin, null));
+        var header = new System.Net.Http.Headers.MediaTypeHeaderValue("text/html") { CharSet = "iso-8859-1" };
+        Assert.Contains("über", WebHttp.Decode(latin, header));
+    }
+}
