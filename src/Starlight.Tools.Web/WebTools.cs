@@ -56,7 +56,7 @@ public sealed class WebTools(
         return SearchEngines.Format(hits, query, engine);
     }
 
-    [Tool("web_read", UntrustedOutput = true, TimeoutSeconds = 45, MaxResultChars = ReadChars + 400)]
+    [Tool("web_read", UntrustedOutput = true, AskAfterUntrusted = true, TimeoutSeconds = 45, MaxResultChars = ReadChars + 400)]
     [Description("Opens a web page and returns its main text. Uses a saved login for the site if there is one.")]
     public async Task<string> Read([Description("The web address, for example https://example.com/page")] string url, CancellationToken ct)
     {

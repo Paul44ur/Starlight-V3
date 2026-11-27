@@ -493,3 +493,25 @@ public sealed class WebHttpFixTests
         Assert.Contains("über", WebHttp.Decode(latin, header));
     }
 }
+
+public sealed class WebReadAskTests
+{
+    [Fact]
+    public async Task Web_read_asks_once_the_turn_has_read_outside_content()
+    {
+        using var env = new TestEnv();
+        var web = new FakeWeb();
+        web.Pages["https://tea.example/a"] = (200, "text/html", "<html><body><main><p>A page about tea with enough words to be read as a page.</p></main></body></html>");
+        web.Pages["https://tea.example/b"] = web.Pages["https://tea.example/a"];
+        using var http = new WebHttp(new PoliteLimiter(() => 1000), web);
+        env.Registry.Add(new WebTools(env.Settings, new Starlight.Security.MemorySecretStore(), http, http, new FakeBrowser(),
+            new SessionVault(Path.Combine(env.Root, "s"), b => b, b => b), new FixedPrompt(null)));
+        var approvals = new FixedApprovals(ApprovalAnswer.Yes);
+        var dispatcher = env.Dispatcher(approvals);
+
+        await dispatcher.InvokeAsync("web_read", new Dictionary<string, object?> { ["url"] = "https://tea.example/a" }, "t1", "chat", default);
+        Assert.Equal(0, approvals.Asked);
+        await dispatcher.InvokeAsync("web_read", new Dictionary<string, object?> { ["url"] = "https://tea.example/b" }, "t1", "chat", default);
+        Assert.Equal(1, approvals.Asked);
+    }
+}
