@@ -77,3 +77,33 @@ public static class EvalScorer
 
     private static string Clip(string s) => s.Length <= 80 ? s : s[..80] + "…";
 }
+
+/// <summary>The 1.0 gate (plan): 90 % of all cases, and 80 % for each tool that has enough cases to judge.</summary>
+public static class EvalGate
+{
+    public const double Overall = 90, PerTool = 80;
+    public const int MinCasesPerTool = 3;
+
+    /// <summary>Why the run fails the gate, or null if it passes.</summary>
+    public static string? Failure(IReadOnlyCollection<(string Group, bool Pass)> results)
+    {
+        if (results.Count == 0)
+        {
+            return "no cases ran";
+        }
+        var rate = 100.0 * results.Count(r => r.Pass) / results.Count;
+        if (rate < Overall)
+        {
+            return $"{rate:0} % overall, below {Overall:0} %";
+        }
+        foreach (var g in results.GroupBy(r => r.Group).Where(g => g.Count() >= MinCasesPerTool))
+        {
+            var r = 100.0 * g.Count(x => x.Pass) / g.Count();
+            if (r < PerTool)
+            {
+                return $"{g.Key} at {r:0} %, below {PerTool:0} %";
+            }
+        }
+        return null;
+    }
+}

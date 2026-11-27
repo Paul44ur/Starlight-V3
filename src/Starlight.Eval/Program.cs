@@ -55,6 +55,7 @@ report.AppendLine();
 report.AppendLine(CultureInfo.InvariantCulture, $"Tools: {string.Join(", ", known.Order())}. Cases: {runnable.Count} run, {cases.Count - runnable.Count} skipped (tool not built yet).");
 report.AppendLine("Thresholds for 1.0: 90 % overall, 80 % per tool.");
 var summary = new List<string>();
+var gateFailures = new List<string>();
 
 foreach (var modelFile in models)
 {
@@ -77,6 +78,7 @@ foreach (var modelFile in models)
     catch (ModelHostException ex)
     {
         report.AppendLine().AppendLine(CultureInfo.InvariantCulture, $"## {Path.GetFileName(modelFile)}").AppendLine().AppendLine("Did not start: " + ex.Message);
+        gateFailures.Add($"{Path.GetFileName(modelFile)}: did not start");
         continue;
     }
     var loadSeconds = load.Elapsed.TotalSeconds;
@@ -107,6 +109,10 @@ foreach (var modelFile in models)
     }
     await host.StopAsync();
 
+    if (EvalGate.Failure(results.Select(r => (r.Case.Expect == "tool" ? r.Case.Tools.First() : "(" + r.Case.Expect + ")", r.Verdict.Pass)).ToList()) is { } why)
+    {
+        gateFailures.Add($"{Path.GetFileName(modelFile)}: {why}");
+    }
     var passed = results.Count(r => r.Verdict.Pass);
     var rate = results.Count == 0 ? 0 : 100.0 * passed / results.Count;
     var medianSeconds = Median(results.Select(r => r.Seconds));
@@ -135,6 +141,12 @@ var file = Path.Combine(outDir, $"eval-{DateTime.Now:yyyyMMdd-HHmm}.md");
 File.WriteAllText(file, report.ToString());
 Console.WriteLine($"Report: {file}");
 try { Directory.Delete(data, true); } catch (IOException) { }
+if (gateFailures.Count > 0)
+{
+    Console.WriteLine("Gate failed: " + string.Join("; ", gateFailures));
+    return argv.Contains("--no-gate") ? 0 : 1;
+}
+Console.WriteLine("Gate passed.");
 return 0;
 
 static double Median(IEnumerable<double> values)

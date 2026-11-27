@@ -46,3 +46,18 @@ public sealed class EvalScorerTests
         Assert.All(cases, c => Assert.Contains(c.Expect, new[] { "tool", "none", "clarify" }));
     }
 }
+
+public sealed class EvalGateTests
+{
+    private static List<(string, bool)> Cases(string group, int pass, int fail) =>
+        [.. Enumerable.Repeat((group, true), pass), .. Enumerable.Repeat((group, false), fail)];
+
+    [Fact]
+    public void The_gate_needs_90_overall_and_80_per_tool()
+    {
+        Assert.Null(Starlight.Eval.EvalGate.Failure([.. Cases("app", 19, 1), .. Cases("web_read", 9, 1)]));
+        Assert.Contains("overall", Starlight.Eval.EvalGate.Failure([.. Cases("app", 8, 2)]));
+        Assert.Contains("web_read", Starlight.Eval.EvalGate.Failure([.. Cases("app", 40, 0), .. Cases("web_read", 3, 2)]));
+        Assert.NotNull(Starlight.Eval.EvalGate.Failure([]));
+    }
+}
