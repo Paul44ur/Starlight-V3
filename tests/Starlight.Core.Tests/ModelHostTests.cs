@@ -137,6 +137,23 @@ public sealed class ModelHostTests
     }
 
     [Fact]
+    public async Task A_crash_right_after_the_health_check_is_restarted()
+    {
+        Assert.SkipUnless(CanRun, "needs python3 on Linux");
+        var (env, host, argsFile) = Make("die_after_health");
+        using var _ = env;
+        await using var __ = host;
+        await host.StartAsync();
+        var deadline = DateTime.UtcNow.AddSeconds(20);
+        while (DateTime.UtcNow < deadline && (File.ReadAllLines(argsFile).Length < 2 || host.State != ModelState.Ready))
+        {
+            await Task.Delay(100);
+        }
+        Assert.Equal(2, File.ReadAllLines(argsFile).Length);
+        Assert.Equal(ModelState.Ready, host.State);
+    }
+
+    [Fact]
     public async Task Stop_ends_a_long_load_at_once()
     {
         Assert.SkipUnless(CanRun, "needs python3 on Linux");
@@ -144,8 +161,10 @@ public sealed class ModelHostTests
         using var _ = env;
         await using var __ = host;
         var start = host.StartAsync();
+        var argsDeadline = DateTime.UtcNow.AddSeconds(20);
         while (!File.Exists(argsFile))
         {
+            Assert.True(DateTime.UtcNow < argsDeadline, "the fake server never started");
             await Task.Delay(50);
         }
         var watch = System.Diagnostics.Stopwatch.StartNew();

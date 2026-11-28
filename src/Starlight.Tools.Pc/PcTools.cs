@@ -58,21 +58,31 @@ public sealed class PcTools : IToolProvider
         {
             RecurseSubdirectories = true,
             IgnoreInaccessible = true,
-            MatchCasing = MatchCasing.CaseInsensitive,
-            AttributesToSkip = FileAttributes.System,
+            // Links are not followed (a junction can loop back), and hidden and system files are left out.
+            AttributesToSkip = FileAttributes.System | FileAttributes.Hidden | FileAttributes.ReparsePoint,
         };
         var hits = new List<FileSystemInfo>();
-        var scanned = 0;
+        var capped = false;
         foreach (var root in roots.Where(Directory.Exists))
         {
-            foreach (var path in Directory.EnumerateFileSystemEntries(root, pattern, options))
+            // Every entry is looked at here, so the timeout and the kill switch stop a search that finds nothing.
+            foreach (var path in Directory.EnumerateFileSystemEntries(root, "*", options))
             {
                 ct.ThrowIfCancellationRequested();
-                hits.Add(Directory.Exists(path) ? new DirectoryInfo(path) : new FileInfo(path));
-                if (++scanned >= 2000)
+                if (!System.IO.Enumeration.FileSystemName.MatchesSimpleExpression(pattern, Path.GetFileName(path), ignoreCase: true))
                 {
+                    continue;
+                }
+                hits.Add(Directory.Exists(path) ? new DirectoryInfo(path) : new FileInfo(path));
+                if (hits.Count >= MaxScanned)
+                {
+                    capped = true;
                     break;
                 }
+            }
+            if (capped)
+            {
+                break;
             }
         }
         if (hits.Count == 0)
@@ -81,9 +91,13 @@ public sealed class PcTools : IToolProvider
         }
         var lines = hits.OrderByDescending(h => h.LastWriteTime).Take(MaxFindResults)
             .Select(h => h is FileInfo f ? $"{f.FullName}  ({Size(f.Length)}, {f.LastWriteTime:yyyy-MM-dd})" : $"{h.FullName}\\  (folder)");
-        var more = hits.Count > MaxFindResults ? $"\n…and {hits.Count - MaxFindResults} more. Ask for a narrower name or folder." : "";
+        var more = capped
+            ? $"\nThere are more than {MaxScanned} matches; these are the newest of the first {MaxScanned}. Ask for a narrower name or folder."
+            : hits.Count > MaxFindResults ? $"\n…and {hits.Count - MaxFindResults} more. Ask for a narrower name or folder." : "";
         return string.Join('\n', lines) + more;
     }
+
+    internal const int MaxScanned = 2000;
 
     internal static IReadOnlyList<string> DefaultRoots()
     {

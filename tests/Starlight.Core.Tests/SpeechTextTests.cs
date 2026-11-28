@@ -87,6 +87,12 @@ public sealed class VoiceApprovalTests
     [InlineData("Always allow it", Starlight.Tools.ApprovalAnswer.Always)]
     [InlineData("open notepad", null)]
     [InlineData("yes, and also close Word", null)]
+    [InlineData("Yes, please.", Starlight.Tools.ApprovalAnswer.Yes)]
+    [InlineData("Yes, do it.", Starlight.Tools.ApprovalAnswer.Yes)]
+    [InlineData("No, thanks.", Starlight.Tools.ApprovalAnswer.No)]
+    [InlineData("Don\u2019t.", Starlight.Tools.ApprovalAnswer.No)]
+    [InlineData("Yes?", Starlight.Tools.ApprovalAnswer.Yes)]
+    [InlineData("Always?", null)]
     public void Parses_spoken_answers(string heard, Starlight.Tools.ApprovalAnswer? expected) =>
         Assert.Equal(expected, VoiceApproval.Parse(heard));
 }

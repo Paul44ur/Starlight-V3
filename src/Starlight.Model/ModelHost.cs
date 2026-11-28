@@ -165,6 +165,11 @@ public sealed class ModelHost : IAsyncDisposable
             await WaitForHealthAsync(process, ct);
             _client = CreateClient(BaseUri);
             SetState(ModelState.Ready, Path.GetFileName(ModelPath()));
+            if (process.HasExited)
+            {
+                // It died between the last health check and Ready, when OnExited still ignored it: handle it now.
+                OnExited(process);
+            }
         }
         catch (ModelHostException ex)
         {
@@ -233,10 +238,17 @@ public sealed class ModelHost : IAsyncDisposable
         return new OpenAIClient(new ApiKeyCredential("local"), options).GetChatClient("local").AsIChatClient();
     }
 
+    private Process? _exitHandled;
+
     private void OnExited(Process process)
     {
         // While starting, WaitForHealthAsync sees the exit and reports it; no restart for a model that never loaded.
         if (_stopping || State == ModelState.Starting || !ReferenceEquals(process, _process))
+        {
+            return;
+        }
+        // The Exited event and the check after Ready can both see one exit; it is handled once.
+        if (ReferenceEquals(Interlocked.Exchange(ref _exitHandled, process), process))
         {
             return;
         }

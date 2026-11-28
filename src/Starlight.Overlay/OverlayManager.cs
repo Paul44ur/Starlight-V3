@@ -271,14 +271,22 @@ public sealed partial class OverlayManager : IApprovalService, IDisposable
 
     private void OnDisplayChanged(object? sender, EventArgs e) => OnUi(() =>
     {
+        // Switched off, or shutting down (a queued rebuild can arrive after Dispose): build nothing.
+        if (_disposed || !_settings.Current.Overlay.Enabled)
+        {
+            return;
+        }
         Log.Information("Display settings changed; rebuilding the overlay");
         Build();
     });
 
     private void OnUi(Action a) => _ui.BeginInvoke(a);
 
+    private bool _disposed;
+
     public void Dispose()
     {
+        _disposed = true;
         SystemEvents.DisplaySettingsChanged -= OnDisplayChanged;
         _subs.ForEach(s => s.Dispose());
         _keepOnTop.Stop();

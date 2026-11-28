@@ -15,7 +15,13 @@ internal sealed class WindowApprovals : IApprovalService
 
     private static Task<ApprovalAnswer> Show(ApprovalRequest request, CancellationToken ct)
     {
-        var done = new TaskCompletionSource<ApprovalAnswer>();
+        if (ct.IsCancellationRequested)
+        {
+            return Task.FromResult(ApprovalAnswer.No);
+        }
+        // Continuations run off the UI thread: an approved tool must not start running inside the button click.
+        var done = new TaskCompletionSource<ApprovalAnswer>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var closed = false;
         var window = new FluentWindow
         {
             Title = "Starlight asks",
@@ -49,8 +55,16 @@ internal sealed class WindowApprovals : IApprovalService
         }
         panel.Children.Add(buttons);
         window.Content = panel;
-        var registration = ct.Register(() => window.Dispatcher.InvokeAsync(() => { if (window.IsLoaded) { window.Close(); } }));
-        window.Closed += (_, _) => { registration.Dispose(); done.TrySetResult(ApprovalAnswer.No); };
+        // Runs after Show() (the dispatcher queues it), so a cancel right after showing still closes the window.
+        var registration = ct.Register(() => window.Dispatcher.InvokeAsync(() =>
+        {
+            done.TrySetResult(ApprovalAnswer.No);
+            if (!closed)
+            {
+                window.Close();
+            }
+        }));
+        window.Closed += (_, _) => { closed = true; registration.Dispose(); done.TrySetResult(ApprovalAnswer.No); };
         window.Show();
         window.Activate();
         no.Focus();

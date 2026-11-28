@@ -8,6 +8,8 @@ mode = os.environ.get("FAKE_MODE", "ok")
 with open(os.environ["FAKE_ARGS_FILE"], "a") as f:
     f.write(" ".join(args) + "\n")
 print("fake server starting", flush=True)
+with open(os.environ["FAKE_ARGS_FILE"]) as f:
+    first_run = len(f.readlines()) == 1
 if mode == "die":
     print("error: cannot load model", file=sys.stderr, flush=True)
     sys.exit(3)
@@ -20,6 +22,8 @@ class H(http.server.BaseHTTPRequestHandler):
     def do_GET(self):
         if self.path == "/health":
             self.send_response(200); self.end_headers(); self.wfile.write(b'{"status":"ok"}')
+            if mode == "die_after_health" and first_run:
+                self.wfile.flush(); os._exit(1)
         elif self.path == "/exit":
             self.send_response(200); self.end_headers(); os._exit(1)
         else:

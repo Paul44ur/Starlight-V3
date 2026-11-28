@@ -69,6 +69,10 @@ public sealed class NetworkTests
     [InlineData("journalctl -n 50 -u nginx --vacuum-time=1s", false)]
     [InlineData("systemctl status ../../x", false)]
     [InlineData("systemctl status /etc/*", false)]
+    [InlineData("systemctl status nginx\t-f", false)]
+    [InlineData("systemctl status `reboot`", false)]
+    [InlineData("systemctl status nginx > /etc/passwd", false)]
+    [InlineData("systemctl status nginx\nreboot", false)]
     public void Only_allow_listed_commands_without_shell_tricks_run_freely(string command, bool allowed) =>
         Assert.Equal(allowed, CommandPolicy.IsAllowed(command, new ServerEntry().AllowedCommands));
 

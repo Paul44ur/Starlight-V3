@@ -159,16 +159,20 @@ public static class VoiceApproval
 {
     public static Starlight.Tools.ApprovalAnswer? Parse(string heard)
     {
-        var t = heard.Trim().TrimEnd('.', '!', ',').Trim().ToLowerInvariant();
+        // Whisper writes "Yes, please." or "Don’t." (curly apostrophe): drop the punctuation, keep the words.
+        var question = heard.TrimEnd().EndsWith('?');
+        var words = heard.Replace('\u2019', '\'').ToLowerInvariant()
+            .Split([' ', ',', '.', '!', '?', ';', ':'], StringSplitOptions.RemoveEmptyEntries);
+        var t = string.Join(' ', words);
         // Only a clear phrase gives a lasting yes: "always" at the start of a longer sentence
         // ("always ask me first") must not.
         string[] always = ["always", "always allow", "always allow it", "always allow this", "always yes", "yes always"];
-        if (always.Contains(t))
+        if (always.Contains(t) && !question)
         {
             return Starlight.Tools.ApprovalAnswer.Always;
         }
-        string[] yes = ["yes", "yeah", "yep", "sure", "ok", "okay", "do it", "go ahead", "yes please"];
-        string[] no = ["no", "nope", "don't", "do not", "cancel", "stop", "no thanks"];
+        string[] yes = ["yes", "yeah", "yep", "sure", "ok", "okay", "do it", "go ahead", "yes please", "yes do it", "yes go ahead", "okay do it", "sure go ahead"];
+        string[] no = ["no", "nope", "don't", "do not", "cancel", "stop", "no thanks", "no thank you", "no don't", "don't do it", "no stop"];
         if (yes.Contains(t))
         {
             return Starlight.Tools.ApprovalAnswer.Yes;

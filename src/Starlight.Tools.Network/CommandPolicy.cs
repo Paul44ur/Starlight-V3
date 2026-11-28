@@ -11,7 +11,8 @@ public static class CommandPolicy
     public static bool IsAllowed(string command, IEnumerable<string> patterns)
     {
         var c = string.Join(' ', command.Split(' ', StringSplitOptions.RemoveEmptyEntries));
-        if (c.Length == 0 || c.AsSpan().IndexOfAny(ShellChars) >= 0)
+        // Control characters (a tab is a separator for the remote shell) never pass.
+        if (c.Length == 0 || c.AsSpan().IndexOfAny(ShellChars) >= 0 || c.Any(char.IsControl))
         {
             return false;
         }

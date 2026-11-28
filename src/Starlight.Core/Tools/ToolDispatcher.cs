@@ -146,13 +146,17 @@ public sealed class ToolDispatcher(
         ToolResult result;
         var previous = ToolCallContext.Current;
         ToolCallContext.Current = new ToolCallContext(turnId, source, tool.Name);
+        if (tool.UntrustedOutput)
+        {
+            // Marked before the call: a tool that read outside text and then failed can still pass it on in its error.
+            MarkUntrusted(turnId);
+        }
         try
         {
             var value = await tool.Function.InvokeAsync(new AIFunctionArguments(arguments), linked.Token);
             var text = Shorten(ToText(value), tool.MaxResultChars);
             if (tool.UntrustedOutput)
             {
-                MarkUntrusted(turnId);
                 text = UntrustedMark + "\n" + text;
             }
             result = ToolResult.Success(text) with { Images = value is ToolOutput o ? o.Images : [] };

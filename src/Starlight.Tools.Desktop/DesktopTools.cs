@@ -56,7 +56,8 @@ public sealed class DesktopTools(UiSnapshot ui, EventHub events, Func<bool> hasV
     public async Task<string> Find([Description("What to find: its name or visible text")] string target, CancellationToken ct = default)
     {
         var f = await ResolveAsync(target, ct);
-        return $"Found {f.Label} at {f.Box.CenterX},{f.Box.CenterY} ({f.How}).";
+        // No x,y here: they would be screen pixels, while click and point read x,y in the last picture.
+        return $"Found {f.Label} ({f.How}). To click or point at it, pass the same target: \"{target}\".";
     }
 
     [Tool("screen_point", TimeoutSeconds = 20)]
@@ -137,28 +138,57 @@ public sealed class DesktopTools(UiSnapshot ui, EventHub events, Func<bool> hasV
             Input.Keys("win+d");
             return "Showed the desktop.";
         }
-        var w = string.IsNullOrWhiteSpace(name)
-            ? Win32.TopLevelWindows().FirstOrDefault(x => x.Handle == Win32.GetForegroundWindow())
-            : Win32.TopLevelWindows().FirstOrDefault(x => TargetParser.Match(name, x.Title) > 0 || TargetParser.Match(name, x.Process) > 0);
-        if (w is null)
+        if (a is not ("minimize" or "maximize" or "restore" or "snap_left" or "snap_right"))
         {
-            throw new ToolException($"No window matches '{name}'.");
+            throw new ToolException("action must be minimize, maximize, restore, snap_left, snap_right or minimize_all.");
         }
-        switch (a)
+        var windows = Win32.TopLevelWindows();
+        WindowInfo w;
+        if (string.IsNullOrWhiteSpace(name))
         {
-            case "minimize": Win32.ShowWindow(w.Handle, 6); break;
-            case "maximize": Win32.ShowWindow(w.Handle, 3); break;
-            case "restore": Win32.ShowWindow(w.Handle, Win32.SW_RESTORE); break;
-            case "snap_left":
-            case "snap_right":
-                Win32.Focus(w.Handle);
-                Thread.Sleep(100);
-                Input.Keys(a == "snap_left" ? "win+left" : "win+right");
-                break;
-            default:
-                throw new ToolException("action must be minimize, maximize, restore, snap_left, snap_right or minimize_all.");
+            w = windows.FirstOrDefault(x => x.Handle == Win32.GetForegroundWindow())
+                ?? throw new ToolException("The front window is Starlight's own or has no title. Give the window's name.");
+        }
+        else
+        {
+            // The same matching as the app tool: several matching windows means asking, not guessing.
+            var i = AppMatcher.PickWindow(name, windows.Select(x => (x.Title, x.Process)).ToList(), unique: true, out var problem);
+            w = i >= 0 ? windows[i] : throw new ToolException(problem!);
+        }
+        // ShowWindow's result says whether the window was visible before, not whether it worked; only focus can fail.
+        var ok = a switch
+        {
+            "minimize" => Show(w.Handle, ShowMinimized),
+            "maximize" => Show(w.Handle, ShowMaximized),
+            "restore" => Show(w.Handle, Win32.SW_RESTORE),
+            _ => Snap(w.Handle, a == "snap_left"),
+        };
+        if (!ok)
+        {
+            throw new ToolException($"Windows did not let me change \"{w.Title}\". It may run as administrator.");
         }
         return $"{a.Replace('_', ' ')}: \"{w.Title}\".";
+    }
+
+    private const int ShowMinimized = 6;
+    private const int ShowMaximized = 3;
+
+    private static bool Show(nint handle, int command)
+    {
+        Win32.ShowWindow(handle, command);
+        return true;
+    }
+
+    private static bool Snap(nint handle, bool left)
+    {
+        if (!Win32.Focus(handle))
+        {
+            return false;
+        }
+        GuardUser();
+        Thread.Sleep(100);
+        Input.Keys(left ? "win+left" : "win+right");
+        return true;
     }
 
     /// <summary>Input waits when the user is typing or moving the mouse (plan 5.5).</summary>

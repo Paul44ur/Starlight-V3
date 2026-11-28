@@ -147,3 +147,46 @@ public sealed class KillSwitchFixTests
         Assert.True(watch.Elapsed < TimeSpan.FromSeconds(5));
     }
 }
+
+public sealed class AgentLoopRound3Tests
+{
+    private static AgentLoop Loop(TestEnv env, IChatClient? client) =>
+        new(() => client, env.Registry, env.Dispatcher(), env.Settings, env.KillSwitch, env.Events, env.Trace, env.Db, [], []);
+
+    [Fact]
+    public async Task A_picture_does_not_split_the_results_of_parallel_calls()
+    {
+        using var env = new TestEnv();
+        env.Registry.Add(new SampleTools());
+        var client = new ScriptedChatClient(
+            _ => [new ChatResponseUpdate(ChatRole.Assistant, [new FunctionCallContent("c1", "look", new Dictionary<string, object?>()), new FunctionCallContent("c2", "echo", new Dictionary<string, object?> { ["text"] = "hi" })])],
+            _ => ScriptedChatClient.Text("Done."));
+        await Loop(env, client).RunAsync(new Conversation(), "look and echo", "chat");
+        var sent = client.Sent[1];
+        var callAt = sent.FindIndex(m => m.Contents.OfType<FunctionCallContent>().Any());
+        Assert.Equal(ChatRole.Tool, sent[callAt + 1].Role);
+        Assert.Equal(ChatRole.Tool, sent[callAt + 2].Role);
+        Assert.True(sent[callAt + 3].Contents.OfType<DataContent>().Any());
+    }
+
+    [Fact]
+    public async Task A_model_timeout_is_not_reported_as_a_stop()
+    {
+        using var env = new TestEnv();
+        var outcome = await Loop(env, new TimingOutClient()).RunAsync(new Conversation(), "hi", "chat");
+        Assert.True(outcome.Failed);
+        Assert.Contains("did not answer in time", outcome.Answer);
+    }
+
+    private sealed class TimingOutClient : IChatClient
+    {
+        public Task<ChatResponse> GetResponseAsync(IEnumerable<ChatMessage> messages, ChatOptions? options = null, CancellationToken cancellationToken = default) =>
+            throw new TaskCanceledException("HttpClient.Timeout");
+
+        public IAsyncEnumerable<ChatResponseUpdate> GetStreamingResponseAsync(IEnumerable<ChatMessage> messages, ChatOptions? options = null, CancellationToken cancellationToken = default) =>
+            throw new TaskCanceledException("HttpClient.Timeout");
+
+        public object? GetService(Type serviceType, object? serviceKey = null) => null;
+        public void Dispose() { }
+    }
+}

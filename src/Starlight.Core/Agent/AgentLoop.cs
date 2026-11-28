@@ -138,6 +138,9 @@ public sealed class AgentLoop(
                 {
                     answer.Append(stepText).Append(' ');
                 }
+                // Pictures go after all the step's tool results: a user message between two results would split
+                // the calls from their results, which chat templates refuse.
+                var pictures = new List<ChatMessage>();
                 foreach (var call in calls)
                 {
                     trace.Write("model.call", turnId, new { tool = call.Name, args = call.Arguments });
@@ -148,10 +151,11 @@ public sealed class AgentLoop(
                         // Tool messages carry text only; the picture follows as a user message.
                         var picture = new List<AIContent> { new TextContent($"(Picture from {call.Name}.)") };
                         picture.AddRange(result.Images);
-                        conversation.Messages.Add(new ChatMessage(ChatRole.User, picture));
+                        pictures.Add(new ChatMessage(ChatRole.User, picture));
                     }
                     events.Publish(new StateChanged(AssistantState.Thinking));
                 }
+                conversation.Messages.AddRange(pictures);
                 if (step == maxSteps - 1)
                 {
                     var stop = $"I stopped after {maxSteps} steps without finishing. Tell me how to continue.";
@@ -182,10 +186,17 @@ public sealed class AgentLoop(
             }
             return Finish(turnId, text, failed: false);
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException) when (cts.IsCancellationRequested)
         {
             Save(conversation);
             return Finish(turnId, killSwitch.IsEngaged ? "Stopped." : "Okay, stopped.", failed: true);
+        }
+        catch (OperationCanceledException ex)
+        {
+            // Nobody pressed stop: an HTTP timeout. The model hung or is too slow.
+            Log.Error(ex, "Model call timed out in turn {Turn}", turnId);
+            Save(conversation);
+            return Finish(turnId, "My model did not answer in time. It may be busy or restarting; try again in a moment.", failed: true);
         }
         catch (Exception ex) when (ex is HttpRequestException or IOException)
         {

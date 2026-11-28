@@ -34,6 +34,20 @@ public sealed class PcToolsTests
     }
 
     [Fact]
+    public void A_search_that_finds_nothing_still_stops_when_cancelled()
+    {
+        using var env = new TestEnv();
+        var dir = Directory.CreateDirectory(Path.Combine(env.Root, "many")).FullName;
+        for (var i = 0; i < 50; i++)
+        {
+            File.WriteAllText(Path.Combine(dir, $"file{i}.txt"), "x");
+        }
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
+        Assert.ThrowsAny<OperationCanceledException>(() => new PcTools([dir]).FindFiles("nomatch", null, cts.Token));
+    }
+
+    [Fact]
     public void Missing_folder_and_empty_name_are_tool_errors()
     {
         var tools = new PcTools([]);

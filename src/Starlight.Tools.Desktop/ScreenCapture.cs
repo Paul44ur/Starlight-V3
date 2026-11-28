@@ -72,25 +72,30 @@ public static partial class ScreenCapture
         return new Screenshot(bmp, area);
     }
 
-    /// <summary>A cheap fingerprint of an area, to tell whether something changed after an action.</summary>
+    /// <summary>A fingerprint of every pixel of an area, to tell whether something changed after an action.
+    /// A shrunk copy missed one typed character or a ticked box, and the model then repeated the action.</summary>
     public static long Fingerprint(ScreenRect area)
     {
         using var shot = Capture(area);
-        using var tiny = new Bitmap(32, 18);
-        using (var g = Graphics.FromImage(tiny))
+        var bmp = shot.Image;
+        var data = bmp.LockBits(new Rectangle(0, 0, bmp.Width, bmp.Height), ImageLockMode.ReadOnly, PixelFormat.Format32bppArgb);
+        try
         {
-            g.InterpolationMode = InterpolationMode.Bilinear;
-            g.DrawImage(shot.Image, 0, 0, 32, 18);
-        }
-        long hash = 17;
-        for (var y = 0; y < 18; y++)
-        {
-            for (var x = 0; x < 32; x++)
+            var row = new byte[bmp.Width * 4];
+            var hash = unchecked((long)14695981039346656037UL);
+            for (var y = 0; y < bmp.Height; y++)
             {
-                var c = tiny.GetPixel(x, y);
-                hash = hash * 31 + ((c.R >> 4) << 8 | (c.G >> 4) << 4 | (c.B >> 4));
+                System.Runtime.InteropServices.Marshal.Copy(data.Scan0 + (y * data.Stride), row, 0, row.Length);
+                foreach (var b in row)
+                {
+                    hash = unchecked((hash ^ b) * 1099511628211L);
+                }
             }
+            return hash;
         }
-        return hash;
+        finally
+        {
+            bmp.UnlockBits(data);
+        }
     }
 }
