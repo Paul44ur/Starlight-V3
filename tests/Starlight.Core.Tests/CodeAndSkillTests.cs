@@ -206,6 +206,14 @@ public sealed class SkillTests
     }
 
     [Fact]
+    public void Running_a_skill_asks_once_the_turn_has_read_outside_content()
+    {
+        using var env = new TestEnv();
+        env.Registry.Add(new SkillTools(new SkillStore(env.Db)));
+        Assert.True(env.Registry.Find("skill_run")!.AskAfterUntrusted);
+    }
+
+    [Fact]
     public void Approving_never_replaces_a_saved_skill()
     {
         using var env = new TestEnv();
@@ -217,6 +225,7 @@ public sealed class SkillTests
         store.Approve(drafts[0].Id, "my_skill");
 
         Assert.Throws<InvalidOperationException>(() => store.Approve(drafts[1].Id, "my_skill"));
+        Assert.Throws<InvalidOperationException>(() => store.Approve(drafts[1].Id, "?! --"));
         Assert.Equal(drafts[0].Request, store.Find("my_skill")!.Description);
     }
 

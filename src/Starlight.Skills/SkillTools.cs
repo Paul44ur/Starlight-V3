@@ -13,7 +13,7 @@ public sealed class SkillTools(SkillStore store) : IToolProvider, IPromptContrib
     /// <summary>Set by the app: the dispatcher, so steps run with their permissions and audit.</summary>
     public IToolCaller? Caller { get; set; }
 
-    [Tool("skill_run", TimeoutSeconds = 300)]
+    [Tool("skill_run", AskAfterUntrusted = true, TimeoutSeconds = 300)]
     [Description("Runs a skill the user approved, by name, with values for its parameters. The skills are listed in your instructions.")]
     public async Task<string> Run(
         [Description("The skill's name")] string name,

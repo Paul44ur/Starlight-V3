@@ -60,11 +60,21 @@ public static class PageText
         }
         var sb = new StringBuilder();
         Walk(root, sb, 0);
-        var lines = sb.ToString().Split('\n').Select(l => l.Trim()).ToList();
+        var lines = sb.ToString().Split('\n').Select(l => l.StartsWith(PreLine) ? l.TrimEnd() : l.Trim()).ToList();
         var text = new StringBuilder();
         var blank = false;
         foreach (var line in lines)
         {
+            if (line.StartsWith(PreLine))
+            {
+                if (blank)
+                {
+                    text.Append('\n');
+                    blank = false;
+                }
+                text.Append(line.AsSpan(1)).Append('\n');
+                continue;
+            }
             if (line.Length == 0 || line == "-")
             {
                 blank = text.Length > 0;
@@ -136,7 +146,13 @@ public static class PageText
             }
             if (tag == "pre")
             {
-                sb.Append(e.TextContent.TrimEnd()).Append('\n');
+                // Code keeps its indentation: each line carries a marker so the clean-up below does not trim it.
+                sb.Append("\n```\n");
+                foreach (var codeLine in e.TextContent.TrimEnd().Split('\n'))
+                {
+                    sb.Append(PreLine).Append(codeLine.TrimEnd('\r')).Append('\n');
+                }
+                sb.Append("```\n");
                 continue;
             }
             if (tag == "img" && e.GetAttribute("alt") is { Length: > 0 } alt)
@@ -154,6 +170,8 @@ public static class PageText
             }
         }
     }
+
+    private const char PreLine = '\u0001';
 
     internal static string Squash(string s)
     {

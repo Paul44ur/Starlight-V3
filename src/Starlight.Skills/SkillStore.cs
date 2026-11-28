@@ -70,6 +70,10 @@ public sealed class SkillStore
     {
         var draft = Drafts().FirstOrDefault(d => d.Id == draftId) ?? throw new InvalidOperationException("The offer is gone.");
         var key = SkillName(name);
+        if (key.Length == 0)
+        {
+            throw new InvalidOperationException("Give the skill a name with letters or digits.");
+        }
         if (Find(key) is not null)
         {
             // Never replace a skill the user already saved by accident.

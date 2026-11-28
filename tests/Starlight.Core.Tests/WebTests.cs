@@ -453,6 +453,15 @@ public sealed class WebTests
 public sealed class PageTextFixTests
 {
     [Fact]
+    public void Code_in_pre_blocks_keeps_its_indentation()
+    {
+        var html = "<html><body><main><p>An example:</p><pre>def f():\n    if x:\n        return 1</pre></main></body></html>";
+        var text = PageText.Clean(html).Text;
+        Assert.Contains("def f():\n    if x:\n        return 1", text);
+        Assert.False(text.Contains('\u0001', StringComparison.Ordinal));
+    }
+
+    [Fact]
     public void Very_deep_html_does_not_overflow()
     {
         var html = "<html><body><main>" + string.Concat(Enumerable.Repeat("<div>", 20000)) + "deep words here" + "</main></body></html>";
@@ -482,6 +491,9 @@ public sealed class WebHttpFixTests
     [InlineData("www.bbc.de", "bbc.de")]
     [InlineData("mail.gmx.at", "gmx.at")]
     [InlineData("shop.example.com.au", "example.com.au")]
+    [InlineData("alice.github.io", "alice.github.io")]
+    [InlineData("www.bob.vercel.app", "bob.vercel.app")]
+    [InlineData("1.2.3.4", "1.2.3.4")]
     public void Site_of_a_country_domain(string host, string site) => Assert.Equal(site, SessionVault.SiteOf(host));
 
     [Fact]
@@ -513,5 +525,16 @@ public sealed class WebReadAskTests
         Assert.Equal(0, approvals.Asked);
         await dispatcher.InvokeAsync("web_read", new Dictionary<string, object?> { ["url"] = "https://tea.example/b" }, "t1", "chat", default);
         Assert.Equal(1, approvals.Asked);
+    }
+
+    [Fact]
+    public void Search_and_research_also_ask_after_outside_content()
+    {
+        using var env = new TestEnv();
+        using var http = new WebHttp(new PoliteLimiter(() => 1000), new FakeWeb());
+        env.Registry.Add(new WebTools(env.Settings, new Starlight.Security.MemorySecretStore(), http, http, new FakeBrowser(),
+            new SessionVault(Path.Combine(env.Root, "s"), b => b, b => b), new FixedPrompt(null)));
+        Assert.True(env.Registry.Find("web_search")!.AskAfterUntrusted);
+        Assert.True(env.Registry.Find("web_research")!.AskAfterUntrusted);
     }
 }

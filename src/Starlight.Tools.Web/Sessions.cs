@@ -12,7 +12,18 @@ public sealed class SessionVault(string dir, Func<byte[], byte[]>? protect = nul
     /// <summary>The part of a host a login belongs to: "mail.example.com" and "www.example.com" share "example.com".</summary>
     public static string SiteOf(string host)
     {
-        var labels = host.ToLowerInvariant().TrimEnd('.').Split('.');
+        var h = host.ToLowerInvariant().TrimEnd('.');
+        // An address is its own site: 1.2.3.4 and 9.9.3.4 must not share a login.
+        if (System.Net.IPAddress.TryParse(h.Trim('[', ']'), out _))
+        {
+            return h;
+        }
+        var labels = h.Split('.');
+        // Hosting domains where every subdomain belongs to someone else (a.github.io, b.vercel.app).
+        if (labels.Length >= 3 && SharedHosts.Contains(labels[^2] + "." + labels[^1]))
+        {
+            return string.Join('.', labels[^3..]);
+        }
         if (labels.Length <= 2)
         {
             return string.Join('.', labels);
@@ -21,6 +32,13 @@ public sealed class SessionVault(string dir, Func<byte[], byte[]>? protect = nul
         var take = labels[^1].Length == 2 && SecondLevels.Contains(labels[^2]) ? 3 : 2;
         return string.Join('.', labels[^take..]);
     }
+
+    private static readonly HashSet<string> SharedHosts =
+    [
+        "github.io", "gitlab.io", "blogspot.com", "vercel.app", "netlify.app", "herokuapp.com", "pages.dev", "workers.dev",
+        "web.app", "firebaseapp.com", "azurewebsites.net", "cloudfront.net", "appspot.com", "wordpress.com", "tumblr.com",
+        "glitch.me", "fly.dev", "onrender.com", "repl.co", "neocities.org", "wixsite.com", "squarespace.com",
+    ];
 
     private static readonly HashSet<string> SecondLevels = ["co", "com", "net", "org", "gov", "edu", "ac", "ne", "or", "go", "gob", "gv", "mil", "nic", "ltd", "plc", "sch", "nhs", "lg", "ad", "ed", "gr", "info", "biz", "nom", "web"];
 

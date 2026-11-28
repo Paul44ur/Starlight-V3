@@ -44,7 +44,7 @@ public sealed class WebTools(
     private const int ReadChars = 12000;
     private readonly Dictionary<string, (RobotsRules Rules, DateTimeOffset At)> _robots = new(StringComparer.OrdinalIgnoreCase);
 
-    [Tool("web_search", UntrustedOutput = true, TimeoutSeconds = 25)]
+    [Tool("web_search", UntrustedOutput = true, AskAfterUntrusted = true, TimeoutSeconds = 25)]
     [Description("Searches the web. Returns titles, addresses and short snippets. Use web_read to open a result, or web_research for a question that needs several sources.")]
     public async Task<string> Search([Description("What to search for")] string query, CancellationToken ct)
     {
@@ -65,7 +65,7 @@ public sealed class WebTools(
         return $"{page.Title}\n{page.Url}\n\n{(text.Length == 0 ? "(no readable text on this page)" : text)}";
     }
 
-    [Tool("web_research", UntrustedOutput = true, TimeoutSeconds = 120, MaxResultChars = 14000)]
+    [Tool("web_research", UntrustedOutput = true, AskAfterUntrusted = true, TimeoutSeconds = 120, MaxResultChars = 14000)]
     [Description("Researches a question on the web: searches, reads up to 6 pages and returns the relevant parts with numbered sources. Then answer with a short report that cites the sources as [1], [2].")]
     public async Task<string> Research([Description("The question to research")] string question, CancellationToken ct)
     {
