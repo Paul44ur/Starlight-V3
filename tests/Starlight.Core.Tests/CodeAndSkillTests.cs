@@ -284,6 +284,26 @@ public sealed class FolderGuardTests
         Assert.Throws<ToolException>(() => Starlight.Tools.Code.CodeTools.CheckFolder(data, data, none));
     }
 
+    [Theory]
+    [InlineData("../../evil", "evil")]
+    [InlineData("a/b\\c", "a_b_c")]
+    [InlineData("CON", "script_con")]
+    [InlineData("rename photos", "rename_photos")]
+    public void Script_names_stay_plain_file_names(string given, string expected) =>
+        Assert.Equal(expected, Starlight.Tools.Code.CodeTools.Name(given));
+
+    [Fact]
+    public void Credential_folders_and_odd_path_spellings_are_refused()
+    {
+        using var env = new TestEnv();
+        var ssh = Directory.CreateDirectory(Path.Combine(env.Root, "home", ".ssh", "keys")).FullName;
+        var data = Path.Combine(env.Root, "data");
+        string[] none = [];
+        Assert.Throws<ToolException>(() => Starlight.Tools.Code.CodeTools.CheckFolder(ssh, data, none));
+        Assert.Throws<ToolException>(() => Starlight.Tools.Code.CodeTools.CheckFolder(@"\\?\C:\Users\me\AppData", data, none));
+        Assert.Throws<ToolException>(() => Starlight.Tools.Code.CodeTools.CheckFolder(@"C:\PROGRA~1\x", data, none));
+    }
+
     [Fact]
     public void A_link_is_followed_before_the_check()
     {

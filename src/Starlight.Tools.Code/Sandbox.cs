@@ -43,28 +43,38 @@ public sealed partial class AppContainerSandbox(string pythonDir, string scratch
             throw new ToolException("The bundled Python is missing, so scripts can't run. Reinstall Starlight.");
         }
         var sid = ContainerSid();
-        var temp = Directory.CreateDirectory(Path.Combine(scratchDir, "tmp-" + Guid.NewGuid().ToString("N")[..8])).FullName;
-        var scriptCopy = Path.Combine(temp, "script.py");
-        File.Copy(script, scriptCopy);
-        Grant(pythonDir, sid, FileSystemRights.ReadAndExecute);
-        Grant(temp, sid, FileSystemRights.Modify);
-        var folderAce = Grant(folder, sid, FileSystemRights.Modify);
+        string? temp = null;
+        FileSystemAccessRule? folderAce = null;
         try
         {
+            // All setup sits inside the try: a failed grant still removes the temp folder and the folder's grant.
+            temp = Directory.CreateDirectory(Path.Combine(scratchDir, "tmp-" + Guid.NewGuid().ToString("N")[..8])).FullName;
+            var scriptCopy = Path.Combine(temp, "script.py");
+            File.Copy(script, scriptCopy);
+            Grant(pythonDir, sid, FileSystemRights.ReadAndExecute);
+            Grant(temp, sid, FileSystemRights.Modify);
+            folderAce = Grant(folder, sid, FileSystemRights.Modify);
             return await Task.Run(() => OperatingSystem.IsWindows() ? Run(sid, python, scriptCopy, folder, temp, timeout, ct) : throw new PlatformNotSupportedException(), ct);
+        }
+        catch (Exception ex) when (ex is UnauthorizedAccessException or IOException or System.Security.Principal.IdentityNotMappedException)
+        {
+            throw new ToolException($"The sandbox could not be prepared: {ex.Message}");
         }
         finally
         {
             Revoke(folder, folderAce);
-            try
+            if (temp is not null)
             {
-                Directory.Delete(temp, recursive: true);
-            }
-            catch (IOException)
-            {
-            }
-            catch (UnauthorizedAccessException)
-            {
+                try
+                {
+                    Directory.Delete(temp, recursive: true);
+                }
+                catch (IOException)
+                {
+                }
+                catch (UnauthorizedAccessException)
+                {
+                }
             }
         }
     }

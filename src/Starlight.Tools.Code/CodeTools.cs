@@ -136,8 +136,13 @@ public sealed partial class CodeTools(ISandbox sandbox, string dataRoot) : ITool
         {
             throw new ToolException("Give the script a name, for example rename_photos.");
         }
-        return key.Length > 60 ? key[..60] : key;
+        key = key.Length > 60 ? key[..60] : key;
+        // Windows device names (con, nul, com1) can't be file names.
+        return ReservedNames().IsMatch(key) ? "script_" + key : key;
     }
+
+    [GeneratedRegex("^(con|prn|aux|nul|com[0-9]|lpt[0-9])$")]
+    private static partial Regex ReservedNames();
 
     [GeneratedRegex("[^a-z0-9_]+")]
     private static partial Regex NameChars();
@@ -153,7 +158,14 @@ public sealed partial class CodeTools(ISandbox sandbox, string dataRoot) : ITool
     /// A link is followed first, so a junction can't point the script somewhere else.</summary>
     internal static string CheckFolder(string folder, string dataRoot, IEnumerable<string>? protectedFolders = null)
     {
-        var full = Path.GetFullPath(Environment.ExpandEnvironmentVariables(folder.Trim().Trim('"')));
+        var given = Environment.ExpandEnvironmentVariables(folder.Trim().Trim('"'));
+        // Other spellings of a path would slip past the checks below: device paths and 8.3 short names.
+        if (given.StartsWith(@"\\?\", StringComparison.Ordinal) || given.StartsWith(@"\\.\", StringComparison.Ordinal)
+            || given.Split('\\', '/').Any(part => System.Text.RegularExpressions.Regex.IsMatch(part, @"~\d")))
+        {
+            throw new ToolException("Give the folder's normal full path, for example D:\\Projects\\Photos.");
+        }
+        var full = Path.GetFullPath(given);
         if (!Directory.Exists(full))
         {
             throw new ToolException($"The folder {full} does not exist.");
@@ -171,12 +183,37 @@ public sealed partial class CodeTools(ISandbox sandbox, string dataRoot) : ITool
         var profile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
         if (string.Equals(full, root, StringComparison.OrdinalIgnoreCase)
             || profile.Length > 0 && string.Equals(full, Path.TrimEndingDirectorySeparator(profile), StringComparison.OrdinalIgnoreCase)
-            || off.Any(o => IsSameOrUnder(full, o) || IsSameOrUnder(o, full)))
+            || off.Any(o => IsSameOrUnder(full, o) || IsSameOrUnder(o, full))
+            || HoldsSecrets(full, profile))
         {
             throw new ToolException($"Scripts may not work on {full}. Pick a folder of the user's own files.");
         }
         return full;
     }
+
+    /// <summary>Keys and sign-ins: ".ssh", ".aws" and the like anywhere, and every hidden folder right in the
+    /// user's profile (tools keep their credentials there).</summary>
+    private static bool HoldsSecrets(string full, string profile)
+    {
+        var parts = full.Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        if (parts.Any(p => SecretFolders.Contains(p)))
+        {
+            return true;
+        }
+        if (profile.Length == 0)
+        {
+            return false;
+        }
+        var home = Path.TrimEndingDirectorySeparator(profile);
+        if (!IsSameOrUnder(full, home) || full.Length == home.Length)
+        {
+            return false;
+        }
+        var first = full[(home.Length + 1)..].Split(Path.DirectorySeparatorChar)[0];
+        return first.StartsWith('.');
+    }
+
+    private static readonly HashSet<string> SecretFolders = new([".ssh", ".aws", ".azure", ".gnupg", ".kube", ".docker", ".config", ".password-store"], StringComparer.OrdinalIgnoreCase);
 
     private static bool IsSameOrUnder(string path, string folder) =>
         string.Equals(path, folder, StringComparison.OrdinalIgnoreCase)
