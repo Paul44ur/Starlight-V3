@@ -20,11 +20,8 @@ namespace Starlight.App;
 /// </summary>
 internal sealed class SetupWindow : FluentWindow, IDisposable
 {
-    public void Dispose()
-    {
-        _running?.Dispose();
-        _running = null;
-    }
+    /// <summary>Stops a running download. The download itself disposes its token source when it ends.</summary>
+    public void Dispose() => _running?.Cancel();
 
     private readonly AssistantCore _core;
     private readonly TextBox _folder = new() { MinWidth = 380 };
@@ -165,9 +162,13 @@ internal sealed class SetupWindow : FluentWindow, IDisposable
             return;
         }
         SaveFolder();
-        _running = new CancellationTokenSource();
+        // A local copy: closing the window disposes and clears the field while this download still runs.
+        var running = new CancellationTokenSource();
+        _running = running;
+        var token = running.Token;
         _download.Content = "Stop";
-        using var http = new HttpClient { Timeout = Timeout.InfiniteTimeSpan };
+        // The timeout covers the wait for the headers only (ResponseHeadersRead); the body has the downloader's stall timeout.
+        using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(60) };
         http.DefaultRequestHeaders.UserAgent.ParseAdd("Starlight/1.0");
         var downloader = new Downloader(http);
         try
@@ -177,7 +178,7 @@ internal sealed class SetupWindow : FluentWindow, IDisposable
                 var bar = _downloads.Children.OfType<ProgressBar>().First(b => (string)b.Tag == item.Id);
                 _status.Text = $"Downloading {item.Title}…";
                 var progress = new Progress<(long Done, long Total)>(x => bar.Value = x.Total > 0 ? (double)x.Done / x.Total : 0);
-                await downloader.FetchAsync(item, dir, progress, _running.Token);
+                await downloader.FetchAsync(item, dir, progress, token);
             }
             _status.Text = "All voice files are in place. Restart Starlight to turn voice on.";
         }
@@ -192,10 +193,16 @@ internal sealed class SetupWindow : FluentWindow, IDisposable
         }
         finally
         {
-            _running.Dispose();
-            _running = null;
-            _download.Content = "Download";
-            FillDownloads();
+            running.Dispose();
+            if (ReferenceEquals(_running, running))
+            {
+                _running = null;
+            }
+            if (IsLoaded)
+            {
+                _download.Content = "Download";
+                FillDownloads();
+            }
         }
     }
 

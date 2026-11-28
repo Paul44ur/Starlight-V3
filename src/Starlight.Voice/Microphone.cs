@@ -14,6 +14,7 @@ public sealed class Microphone : IDisposable
     private WasapiCapture? _capture;
     private List<float>? _recording;
     private DateTime _lastLevel;
+    private bool _closed;
 
     public Microphone(EventHub events, string deviceName = "")
     {
@@ -27,10 +28,18 @@ public sealed class Microphone : IDisposable
     public bool IsRecording => _recording is not null;
 
     /// <summary>Starts capturing (idempotent). Samples flow to <see cref="Samples"/>.</summary>
-    public void Open()
+    public void Open() => OpenCore(reopen: false);
+
+    /// <summary>Opens the capture. A reopen after a failure never undoes a <see cref="Close"/>. The capture is
+    /// kept only once it records, so a failed start leaves nothing behind that looks open.</summary>
+    private void OpenCore(bool reopen)
     {
         lock (_gate)
         {
+            if (reopen && _closed)
+            {
+                return;
+            }
             _closed = false;
             if (_capture is not null)
             {
@@ -38,18 +47,17 @@ public sealed class Microphone : IDisposable
             }
             var device = FindDevice();
             var capture = new WasapiCapture(device, true, 50);
-            _capture = capture;
-            var format = _capture.WaveFormat;
+            var format = capture.WaveFormat;
             Log.Information("Microphone: {Device}, {Rate} Hz, {Channels} ch, {Bits} bit {Encoding}", device.FriendlyName, format.SampleRate, format.Channels, format.BitsPerSample, format.Encoding);
             var isFloat = format.Encoding == NAudio.Wave.WaveFormatEncoding.IeeeFloat
                 || (format.Encoding == NAudio.Wave.WaveFormatEncoding.Extensible && format.BitsPerSample == 32);
-            _capture.DataAvailable += (_, e) =>
+            capture.DataAvailable += (_, e) =>
             {
                 var mono = AudioMath.ToMono(e.BufferSpan[..e.BytesRecorded], format.Channels, isFloat, format.BitsPerSample);
                 var chunk = AudioMath.Resample(mono, format.SampleRate, SampleRate);
                 OnChunk(chunk);
             };
-            _capture.RecordingStopped += (_, e) =>
+            capture.RecordingStopped += (_, e) =>
             {
                 if (e.Exception is not null)
                 {
@@ -70,7 +78,16 @@ public sealed class Microphone : IDisposable
                     });
                 }
             };
-            _capture.StartRecording();
+            try
+            {
+                capture.StartRecording();
+            }
+            catch
+            {
+                capture.Dispose();
+                throw;
+            }
+            _capture = capture;
         }
     }
 
@@ -96,7 +113,15 @@ public sealed class Microphone : IDisposable
         {
             _recording?.AddRange(chunk);
         }
-        Samples?.Invoke(chunk);
+        try
+        {
+            Samples?.Invoke(chunk);
+        }
+        catch (Exception ex)
+        {
+            // A listener's error must not reach NAudio: it would stop the capture and report a broken microphone.
+            Log.Error(ex, "A microphone listener failed");
+        }
         if (_recording is not null && DateTime.UtcNow - _lastLevel > TimeSpan.FromMilliseconds(33))
         {
             _lastLevel = DateTime.UtcNow;
@@ -125,8 +150,6 @@ public sealed class Microphone : IDisposable
         }
     }
 
-    private bool _closed;
-
     /// <summary>The wake phrase needs the microphone all the time: after a failure, try again for a minute.</summary>
     private async Task ReopenAsync()
     {
@@ -142,7 +165,7 @@ public sealed class Microphone : IDisposable
             }
             try
             {
-                Open();
+                OpenCore(reopen: true);
                 Log.Information("Microphone opened again");
                 return;
             }

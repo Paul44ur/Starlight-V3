@@ -11,6 +11,7 @@ namespace Starlight.Tests;
 internal sealed class RangeServer(byte[] body) : HttpMessageHandler
 {
     public int BreakAfter { get; set; } = -1;
+    public bool StallOnce { get; set; }
     public List<long?> RangesAsked { get; } = [];
 
     protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
@@ -25,6 +26,13 @@ internal sealed class RangeServer(byte[] body) : HttpMessageHandler
             return Task.FromResult(refused);
         }
         var slice = body[start..];
+        if (StallOnce)
+        {
+            StallOnce = false;
+            var stalled = new HttpResponseMessage(HttpStatusCode.OK) { Content = new StreamContent(new StallingStream()) };
+            stalled.Content.Headers.ContentLength = body.Length;
+            return Task.FromResult(stalled);
+        }
         if (BreakAfter > 0)
         {
             slice = slice[..BreakAfter];
@@ -39,6 +47,15 @@ internal sealed class RangeServer(byte[] body) : HttpMessageHandler
             response.Content.Headers.ContentRange = new ContentRangeHeaderValue(start, body.Length - 1, body.Length);
         }
         return Task.FromResult(response);
+    }
+
+    private sealed class StallingStream : MemoryStream
+    {
+        public override async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken ct = default)
+        {
+            await Task.Delay(Timeout.Infinite, ct);
+            return 0;
+        }
     }
 
     private sealed class BreakingStream(byte[] data) : MemoryStream(data)
@@ -60,6 +77,19 @@ internal sealed class RangeServer(byte[] body) : HttpMessageHandler
 public sealed class DownloadTests
 {
     private static byte[] Body(int n) => Enumerable.Range(0, n).Select(i => (byte)(i * 7)).ToArray();
+
+    [Fact]
+    public async Task A_stalled_download_counts_as_broken_and_is_tried_again()
+    {
+        using var env = new TestEnv();
+        var body = Body(50_000);
+        var server = new RangeServer(body) { StallOnce = true };
+        var item = new DownloadItem("s", "S", new Uri("https://example.test/s.bin"), Convert.ToHexString(SHA256.HashData(body)), body.Length, DownloadKind.File, "s.bin", true);
+        var path = await new Downloader(new HttpClient(server)) { StallTimeout = TimeSpan.FromMilliseconds(200) }
+            .FetchAsync(item, env.Root, null, default).WaitAsync(TimeSpan.FromSeconds(20));
+        Assert.Equal(body, await File.ReadAllBytesAsync(path));
+        Assert.Equal(2, server.RangesAsked.Count);
+    }
 
     [Fact]
     public async Task A_broken_download_resumes_where_it_stopped_and_is_checked()

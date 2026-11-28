@@ -37,6 +37,9 @@ public sealed class VoiceLoop : IDisposable
     private Task? _running;
     private WakeWord? _wake;
     private Endpointer? _endpointer;
+    // Guards _endpointer between the capture thread (OnSamples), push to talk and the wake phrase.
+    private readonly Lock _listenGate = new();
+    private bool _waking;
     private DateTime _handsFreeSince;
 
     public VoiceLoop(Microphone mic, Recognizer recognizer, Speaker speaker, AgentLoop agent, EventHub events, SettingsStore settings)
@@ -112,35 +115,65 @@ public sealed class VoiceLoop : IDisposable
 
     private void OnSamples(float[] chunk)
     {
-        if (_endpointer is { } ep)
+        var stop = false;
+        lock (_listenGate)
         {
-            var ended = ep.Feed(chunk);
-            var waited = DateTime.UtcNow - _handsFreeSince;
-            if (ended || waited > TimeSpan.FromSeconds(20) || (!ep.SpeechStarted && waited > TimeSpan.FromSeconds(5)))
+            if (_endpointer is { } ep)
             {
-                _endpointer = null;
-                ep.Dispose();
-                StopListening();
+                var ended = ep.Feed(chunk);
+                var waited = DateTime.UtcNow - _handsFreeSince;
+                if (ended || waited > TimeSpan.FromSeconds(20) || (!ep.SpeechStarted && waited > TimeSpan.FromSeconds(5)))
+                {
+                    _endpointer = null;
+                    ep.Dispose();
+                    stop = true;
+                }
+                else
+                {
+                    return;
+                }
             }
+        }
+        if (stop)
+        {
+            StopListening();
             return;
         }
         _wake?.Feed(chunk);
     }
 
-    /// <summary>The wake phrase was heard: listen until the user stops talking.</summary>
+    /// <summary>The wake phrase was heard: listen until the user stops talking. Two quick wake events start one listen.</summary>
     private void WakeUp()
     {
-        if (_endpointer is not null || _mic.IsRecording)
+        lock (_listenGate)
         {
-            return;
+            if (_waking || _endpointer is not null || _mic.IsRecording)
+            {
+                return;
+            }
+            _waking = true;
         }
-        if (_wake is not null)
+        try
         {
-            _wake.Active = false;
+            if (_wake is not null)
+            {
+                _wake.Active = false;
+            }
+            StartListening();
+            var ep = _recognizer.CreateEndpointer();
+            lock (_listenGate)
+            {
+                _handsFreeSince = DateTime.UtcNow;
+                _endpointer = ep;
+            }
         }
-        StartListening();
-        _handsFreeSince = DateTime.UtcNow;
-        _endpointer = _recognizer.CreateEndpointer();
+        finally
+        {
+            lock (_listenGate)
+            {
+                _waking = false;
+            }
+        }
     }
 
     private void ResumeWake()
@@ -156,9 +189,10 @@ public sealed class VoiceLoop : IDisposable
     public void StartListening()
     {
         // Push to talk while a hands-free listen runs: the key decides when it ends, not the pause detector.
-        if (Interlocked.Exchange(ref _endpointer, null) is { } ep)
+        lock (_listenGate)
         {
-            ep.Dispose();
+            _endpointer?.Dispose();
+            _endpointer = null;
         }
         if (_wake is not null)
         {
@@ -174,7 +208,16 @@ public sealed class VoiceLoop : IDisposable
         {
             _agent.CancelCurrent();
         }
-        _mic.BeginUtterance();
+        try
+        {
+            _mic.BeginUtterance();
+        }
+        catch
+        {
+            // No microphone: hands-free listening must not stay off because push to talk failed.
+            ResumeWake();
+            throw;
+        }
         _events.Publish(new StateChanged(AssistantState.Listening));
     }
 
@@ -289,7 +332,11 @@ public sealed class VoiceLoop : IDisposable
     public void Dispose()
     {
         _mic.Samples -= OnSamples;
-        _endpointer?.Dispose();
+        lock (_listenGate)
+        {
+            _endpointer?.Dispose();
+            _endpointer = null;
+        }
         _deltaSub.Dispose();
         _killSub.Dispose();
         _running?.Wait(TimeSpan.FromSeconds(2));

@@ -36,6 +36,9 @@ public static class DownloadManifest
 /// <summary>Downloads with resume (HTTP Range into a .part file), a SHA-256 check, and tar.bz2 unpacking.</summary>
 public sealed class Downloader(HttpClient http)
 {
+    /// <summary>A read that brings no bytes for this long counts as a broken connection and is resumed.</summary>
+    public TimeSpan StallTimeout { get; init; } = TimeSpan.FromSeconds(60);
+
     public async Task<string> FetchAsync(DownloadItem item, string modelsDir, IProgress<(long Done, long Total)>? progress, CancellationToken ct)
     {
         var target = Path.GetFullPath(Path.Combine(modelsDir, item.Target));
@@ -149,8 +152,22 @@ public sealed class Downloader(HttpClient http)
                 int n;
                 var done = have;
                 var lastReport = 0L;
-                while ((n = await source.ReadAsync(buffer, ct)) > 0)
+                using var stall = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                while (true)
                 {
+                    stall.CancelAfter(StallTimeout);
+                    try
+                    {
+                        n = await source.ReadAsync(buffer, stall.Token);
+                    }
+                    catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+                    {
+                        throw new IOException($"{item.Title}: the download stalled.");
+                    }
+                    if (n == 0)
+                    {
+                        break;
+                    }
                     await file.WriteAsync(buffer.AsMemory(0, n), ct);
                     done += n;
                     if (done - lastReport > 1 << 20)
